@@ -1,91 +1,88 @@
-﻿#include "Audio.h"
-#include "DirectXCommon.h"
-#include "GameScene.h"
-#include "TextureManager.h"
-#include "WinApp.h"
-#include "AxisIndicator.h"
+﻿#include <Windows.h>
+#include <d3d12.h>
+#include <dxgi1_6.h>
+#include <cassert>
 
-// Windowsアプリでのエントリーポイント(main関数)
-int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
-	WinApp* win = nullptr;
-	DirectXCommon* dxCommon = nullptr;
-	// 汎用機能
-	Input* input = nullptr;
-	Audio* audio = nullptr;
-	DebugText* debugText = nullptr;
-	AxisIndicator* axisIndicator = nullptr;
-	GameScene* gameScene = nullptr;
+#pragma comment(lib, "d3d12.lib")
+#pragma comment(lib, "dxgi.lib")
 
-	// ゲームウィンドウの作成
-	win = WinApp::GetInstance();
-	win->CreateGameWindow("LE2A_16_ナカヤマ_シュウヤ_CG2");
-
-	// DirectX初期化処理
-	dxCommon = DirectXCommon::GetInstance();
-	dxCommon->Initialize(win);
-
-#pragma region 汎用機能初期化
-	// 入力の初期化
-	input = Input::GetInstance();
-	input->Initialize();
-
-	// オーディオの初期化
-	audio = Audio::GetInstance();
-	audio->Initialize();
-
-	// テクスチャマネージャの初期化
-	TextureManager::GetInstance()->Initialize(dxCommon->GetDevice());
-	TextureManager::Load("white1x1.png");
-
-	// スプライト静的初期化
-	Sprite::StaticInitialize(dxCommon->GetDevice(), WinApp::kWindowWidth, WinApp::kWindowHeight);
-
-	// デバッグテキスト初期化
-	debugText = DebugText::GetInstance();
-	debugText->Initialize();
-
-	// 3Dモデル静的初期化
-	Model::StaticInitialize();
-
-	// 軸方向表示初期化
-	axisIndicator = AxisIndicator::GetInstance();
-	axisIndicator->Initialize();
-#pragma endregion
-
-	// ゲームシーンの初期化
-	gameScene = new GameScene();
-	gameScene->Initialize();
-
-	// メインループ
-	while (true) {
-		// メッセージ処理
-		if (win->ProcessMessage()) {
-			break;
-		}
-
-		// 入力関連の毎フレーム処理
-		input->Update();
-		// ゲームシーンの毎フレーム処理
-		gameScene->Update();
-		// 軸表示の更新
-		axisIndicator->Update();
-
-		// 描画開始
-		dxCommon->PreDraw();
-		// ゲームシーンの描画
-		gameScene->Draw();
-		// 軸表示の描画
-		axisIndicator->Draw();
-		// 描画終了
-		dxCommon->PostDraw();
+// ウィンドウプロシージャ
+LRESULT WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+	// メッセージに応じてゲーム固有の処理を行う
+	switch (msg)
+	{
+		// ウィンドウが破棄された
+	case WM_DESTROY:
+		// OSに対して、アプリの終了を伝える
+		PostQuitMessage(0);
+		return 0;
 	}
 
-	// 各種解放
-	SafeDelete(gameScene);
-	audio->Finalize();
+	// 標準のメッセージ処理を行う
+	return DefWindowProc(hwnd, msg, wparam, lparam);
+}
 
-	// ゲームウィンドウの破棄
-	win->TerminateGameWindow();
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
+{
+	// ウィンドウサイズ
+	const int window_width = 1280; // 横幅
+	const int window_height = 720; // 縦幅
+	// ウィンドウクラスの設定
+	WNDCLASSEX w{};
+	w.cbSize = sizeof(WNDCLASSEX);
+	w.lpfnWndProc = (WNDPROC)WindowProc; // ウィンドウプロシージャを設定
+	w.lpszClassName = L"DirectXGame"; // ウィンドウクラス名
+	w.hInstance = GetModuleHandle(nullptr); // ウィンドウハンドル
+	w.hCursor = LoadCursor(NULL, IDC_ARROW); // カーソル指定
+
+	// ウィンドウクラスをOSに登録する
+	RegisterClassEx(&w);
+	// ウィンドウサイズ{ X座標 Y座標 横幅 縦幅 }
+	RECT wrc = { 0, 0, window_width, window_height };
+	// 自動でサイズを補正する
+	AdjustWindowRect(&wrc, WS_OVERLAPPEDWINDOW, false);
+
+	// ウィンドウオブジェクトの生成
+	HWND hwnd = CreateWindow(w.lpszClassName, // クラス名
+		L"LE2A_16_ナカヤマ_シュウヤ_CG2", // タイトルバーの文字
+		WS_OVERLAPPEDWINDOW, // 標準的なウィンドウスタイル
+		CW_USEDEFAULT, // 表示X座標(OSに任せる)
+		CW_USEDEFAULT, // 表示Y座標(OSに任せる)
+		wrc.right - wrc.left, // ウィンドウ横幅
+		wrc.bottom - wrc.top, // ウィンドウ縦幅
+		nullptr, // 親ウィンドウハンドル
+		nullptr, // メニューハンドル
+		w.hInstance, // 呼び出しアプリケーションハンドル
+		nullptr); // オプション
+
+	// ウィンドウを表示状態にする
+	ShowWindow(hwnd, SW_SHOW);
+
+	MSG msg{}; // メッセージ
+
+	// DirectX初期化処理 ここから
+	
+	// DirectX初期化処理 ここまで
+
+	// ゲームループ
+	while (true) {
+		// メッセージがある?
+		if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
+			TranslateMessage(&msg); // キー入力メッセージの処理
+			DispatchMessage(&msg); // プロシージャにメッセージを送る
+		}
+
+		// ✖ボタンで終了メッセージが来たらゲームループを抜ける
+		if (msg.message == WM_QUIT) { break; }
+
+		// DirectX毎フレーム処理 ここから
+
+		// DirectX毎フレーム処理 ここまで
+	}
+
+	// ウィンドウクラスを登録解除
+	UnregisterClass(w.lpszClassName, w.hInstance);
 
 	return 0;
 }
