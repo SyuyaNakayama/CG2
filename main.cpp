@@ -431,20 +431,43 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 		// 3.画面クリア R G B A
 		FLOAT clearColor[] = { 0.1f,0.25f, 1.0f,0.0f }; // 青っぽい色
-		if (keyboard.key[DIK_SPACE]) { clearColor[2] = 0.3; }
+		// SPACEキー押している間は画面をピンクでクリア
+		if (keyboard.isInput(DIK_SPACE))
+		{
+			clearColor[0] = 1.0f;
+			clearColor[1] = 0.0f;
+			clearColor[2] = 0.5f;
+		}
 		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 
 #pragma region 描画コマンド
 		// ビューポート設定コマンド
-		D3D12_VIEWPORT viewport{};
-		viewport.Width = window_width;
-		viewport.Height = window_height;
-		viewport.TopLeftX = 0;
-		viewport.TopLeftY = 0;
-		viewport.MinDepth = 0.0f;
-		viewport.MaxDepth = 1.0f;
-		// ビューポート設定コマンドを、コマンドリストに積む
-		commandList->RSSetViewports(1, &viewport);
+		const XMFLOAT2 VP_DIV = { 800,450 }; // ビューポート分割座標
+		D3D12_VIEWPORT viewport[4]{};
+		for (size_t i = 0; i < 4; i++)
+		{
+			viewport[i].MinDepth = 0.0f;
+			viewport[i].MaxDepth = 1.0f;
+		}
+		viewport[0].Width = VP_DIV.x;
+		viewport[0].Height = VP_DIV.y;
+		viewport[0].TopLeftX = 0;
+		viewport[0].TopLeftY = 0;
+
+		viewport[1].Width = window_width - VP_DIV.x;
+		viewport[1].Height = VP_DIV.y;
+		viewport[1].TopLeftX = VP_DIV.x;
+		viewport[1].TopLeftY = 0;
+
+		viewport[2].Width = VP_DIV.x;
+		viewport[2].Height = window_height - VP_DIV.y;
+		viewport[2].TopLeftX = 0;
+		viewport[2].TopLeftY = VP_DIV.y;
+
+		viewport[3].Width = window_width - VP_DIV.x;
+		viewport[3].Height = window_height - VP_DIV.y;
+		viewport[3].TopLeftX = VP_DIV.x;
+		viewport[3].TopLeftY = VP_DIV.y;
 
 		// シザー矩形
 		D3D12_RECT scissorRect{};
@@ -454,7 +477,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		scissorRect.bottom = scissorRect.top + window_height; // 切り抜き座標下
 		// シザー矩形設定コマンドを、コマンドリストに積む
 		commandList->RSSetScissorRects(1, &scissorRect);
-
 		// パイプラインステートとルートシグネチャの設定コマンド
 		commandList->SetPipelineState(pipelineState);
 		commandList->SetGraphicsRootSignature(rootSignature);
@@ -464,9 +486,14 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 		// 頂点バッファビューの設定コマンド
 		commandList->IASetVertexBuffers(0, 1, &vbView);
+		for (size_t i = 0; i < 4; i++)
+		{
+			// ビューポート設定コマンドを、コマンドリストに積む
+			commandList->RSSetViewports(1, &viewport[i]);
 
-		// 描画コマンド
-		commandList->DrawInstanced(_countof(vertices), 1, 0, 0); // 全ての頂点を使って描画
+			// 描画コマンド
+			commandList->DrawInstanced(_countof(vertices), 1, 0, 0); // 全ての頂点を使って描画
+		}
 #pragma endregion
 #pragma endregion
 
