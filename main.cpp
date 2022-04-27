@@ -7,6 +7,7 @@
 #include <DirectXMath.h>
 #include <d3dcompiler.h>
 #include <dinput.h>
+#include "MyClass.h"
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -213,26 +214,15 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	UINT64 fenceVal = 0;
 	result = device->CreateFence(fenceVal, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
 
-	// DirectInputの初期化
-	IDirectInput8* directInput = nullptr;
-	result = DirectInput8Create(
-		w.hInstance, DIRECTINPUT_VERSION, IID_IDirectInput8,
-		(void**)&directInput, nullptr);
-	assert(SUCCEEDED(result));
+	// DirectInputの初期化&キーボードデバイスの生成
+	Keyboard keyboard;
+	keyboard.GetInstance(w);
 
-	// キーボードデバイスの生成
-	IDirectInputDevice8* keyboard = nullptr;
-	result = directInput->CreateDevice(GUID_SysKeyboard, &keyboard, NULL);
-	assert(SUCCEEDED(result));
-
-	// 入力データ形式のセット
-	result = keyboard->SetDataFormat(&c_dfDIKeyboard); // 標準形式
-	assert(SUCCEEDED(result));
+	// 入力データ形式を標準設定でセット
+	keyboard.SetDataStdFormat();
 
 	// 排他制御レベルのセット
-	result = keyboard->SetCooperativeLevel(
-		hwnd, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE | DISCL_NOWINKEY);
-	assert(SUCCEEDED(result));
+	keyboard.SetCooperativeLevel(hwnd);
 #pragma endregion
 #pragma region 描画初期化処理
 	// 頂点データ
@@ -419,10 +409,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		if (msg.message == WM_QUIT) { break; }
 
 #pragma region DirectX毎フレーム処理
-		keyboard->Acquire(); // キーボード情報の取得開始
+		keyboard.device->Acquire(); // キーボード情報の取得開始
 		// 全キーの入力状態を取得する
-		BYTE key[256]{};
-		keyboard->GetDeviceState(sizeof(key), key);
+		keyboard.GetDeviceState();
 
 		// バックバッファの番号を取得(2つなので0番か1番)
 		UINT bbIndex = swapChain->GetCurrentBackBufferIndex();
@@ -442,7 +431,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 		// 3.画面クリア R G B A
 		FLOAT clearColor[] = { 0.1f,0.25f, 1.0f,0.0f }; // 青っぽい色
-		if (key[DIK_SPACE]) { clearColor[2] = 0.3; }
+		if (keyboard.key[DIK_SPACE]) { clearColor[2] = 0.3; }
 		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 
 #pragma region 描画コマンド
