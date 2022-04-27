@@ -31,3 +31,4 @@ void Keyboard::GetDeviceState()
 {
 	device->GetDeviceState(sizeof(key), key);
 }
+
