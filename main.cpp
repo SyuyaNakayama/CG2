@@ -373,7 +373,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	pipelineDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB; // 0~255指定のRGBA
 	pipelineDesc.SampleDesc.Count = 1; // 1ピクセルにつき1回サンプリング
 
-	// ルートシグネチャ
+// ルートシグネチャ
 	ID3D12RootSignature* rootSignature;
 	// ルートシグネチャの設定
 	D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc{};
@@ -392,8 +392,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	// パイプランステートの生成
 	ID3D12PipelineState* pipelineState = nullptr;
-	result = device->CreateGraphicsPipelineState(&pipelineDesc, IID_PPV_ARGS(&pipelineState));
-	assert(SUCCEEDED(result));
 #pragma endregion
 
 	// ゲームループ
@@ -441,15 +439,34 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		}
 		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 
-#pragma region 描画コマンド
-		// ビューポート設定コマンド
-		const XMFLOAT2 VP_DIV = { 800,450 }; // ビューポート分割座標
-
 		static bool topologyFlag = 0;
 		if (keyboard.isTrigger(DIK_1))
 		{
 			topologyFlag = !topologyFlag;
 		}
+
+		static bool fillModeFlag = 0;
+		if (keyboard.isTrigger(DIK_2))
+		{
+			fillModeFlag = !fillModeFlag;
+		}
+
+		if (!fillModeFlag)
+		{
+			pipelineDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+		}
+		else
+		{
+			pipelineDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
+		}
+
+		result = device->CreateGraphicsPipelineState(&pipelineDesc, IID_PPV_ARGS(&pipelineState));
+		assert(SUCCEEDED(result));
+
+		keyboard.TransferOldkey();
+#pragma region 描画コマンド
+		// ビューポート設定コマンド
+		const XMFLOAT2 VP_DIV = { 800,450 }; // ビューポート分割座標
 
 		D3D12_VIEWPORT viewport[4]{};
 		for (size_t i = 0; i < 4; i++)
