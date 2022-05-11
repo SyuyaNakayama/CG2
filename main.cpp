@@ -291,7 +291,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, // デバッグ用設定
 		0,
 		&vsBlob, &errorBlob);
-	
+
 	// エラーなら
 	if (FAILED(result)) {
 		// errorBlobからエラー内容をstring型にコピー
@@ -356,9 +356,19 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	pipelineDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID; // ポリゴン内塗りつぶし
 	pipelineDesc.RasterizerState.DepthClipEnable = true; // 深度クリッピングを有効に
 
-	// ブレンドステート
-	pipelineDesc.BlendState.RenderTarget[0].RenderTargetWriteMask
-		= D3D12_COLOR_WRITE_ENABLE_ALL; // RBGA全てのチャンネルを描画
+	// レンダーターゲットのブレンド設定
+	D3D12_RENDER_TARGET_BLEND_DESC& blenddesc = pipelineDesc.BlendState.RenderTarget[0];
+	blenddesc.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL; // RBGA全てのチャンネルを描画
+
+	blenddesc.BlendEnable = true;					// ブレンドを有効にする
+	blenddesc.BlendOpAlpha = D3D12_BLEND_OP_ADD;	// 加算
+	blenddesc.SrcBlendAlpha = D3D12_BLEND_ONE;		// ソースの値を100%使う
+	blenddesc.DestBlendAlpha = D3D12_BLEND_ZERO;	// 使わない
+
+	// 半透明合成
+	blenddesc.BlendOp = D3D12_BLEND_OP_ADD;				// 加算
+	blenddesc.SrcBlend = D3D12_BLEND_SRC_ALPHA;			// ソースのアルファ値
+	blenddesc.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;	// 1.0f-ソースのアルファ値
 
 	// 頂点レイアウトの設定
 	pipelineDesc.InputLayout.pInputElementDescs = inputLayout;
@@ -431,43 +441,17 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 		// 3.画面クリア R G B A
 		FLOAT clearColor[] = { 0.1f,0.25f, 1.0f,0.0f }; // 青っぽい色
-		// SPACEキー押している間は画面をピンクでクリア
-		if (keyboard.isInput(DIK_SPACE))
-		{
-			clearColor[0] = 1.0f;
-			clearColor[1] = 0.0f;
-			clearColor[2] = 0.5f;
-		}
 		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 
 #pragma region 描画コマンド
 		// ビューポート設定コマンド
-		const XMFLOAT2 VP_DIV = { 800,450 }; // ビューポート分割座標
-		D3D12_VIEWPORT viewport[4]{};
-		for (size_t i = 0; i < 4; i++)
-		{
-			viewport[i].MinDepth = 0.0f;
-			viewport[i].MaxDepth = 1.0f;
-		}
-		viewport[0].Width = VP_DIV.x;
-		viewport[0].Height = VP_DIV.y;
-		viewport[0].TopLeftX = 0;
-		viewport[0].TopLeftY = 0;
-
-		viewport[1].Width = window_width - VP_DIV.x;
-		viewport[1].Height = VP_DIV.y;
-		viewport[1].TopLeftX = VP_DIV.x;
-		viewport[1].TopLeftY = 0;
-
-		viewport[2].Width = VP_DIV.x;
-		viewport[2].Height = window_height - VP_DIV.y;
-		viewport[2].TopLeftX = 0;
-		viewport[2].TopLeftY = VP_DIV.y;
-
-		viewport[3].Width = window_width - VP_DIV.x;
-		viewport[3].Height = window_height - VP_DIV.y;
-		viewport[3].TopLeftX = VP_DIV.x;
-		viewport[3].TopLeftY = VP_DIV.y;
+		D3D12_VIEWPORT viewport{};
+		viewport.Width = window_width;
+		viewport.Height = window_height;
+		viewport.TopLeftX = 0;
+		viewport.TopLeftY = 0;
+		viewport.MinDepth = 0.0f;
+		viewport.MaxDepth = 1.0f;
 
 		// シザー矩形
 		D3D12_RECT scissorRect{};
@@ -486,14 +470,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 		// 頂点バッファビューの設定コマンド
 		commandList->IASetVertexBuffers(0, 1, &vbView);
-		for (size_t i = 0; i < 4; i++)
-		{
-			// ビューポート設定コマンドを、コマンドリストに積む
-			commandList->RSSetViewports(1, &viewport[i]);
+		// ビューポート設定コマンドを、コマンドリストに積む
+		commandList->RSSetViewports(1, &viewport);
 
-			// 描画コマンド
-			commandList->DrawInstanced(_countof(vertices), 1, 0, 0); // 全ての頂点を使って描画
-		}
+		// 描画コマンド
+		commandList->DrawInstanced(_countof(vertices), 1, 0, 0); // 全ての頂点を使って描画
 #pragma endregion
 #pragma endregion
 
