@@ -231,6 +231,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		{ -0.5f, -0.5f, 0.0f }, // 左下
 		{ -0.5f, +0.5f, 0.0f }, // 左上
 		{ +0.5f, -0.5f, 0.0f }, // 右下
+		{ +0.5f, +0.5f, 0.0f }, // 右上
 	};
 	// 頂点データ全体のサイズ = 頂点データ一つ分のサイズ * 頂点データの要素数
 	UINT sizeVB = static_cast<UINT>(sizeof(XMFLOAT3) * _countof(vertices));
@@ -443,6 +444,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 #pragma region 描画コマンド
 		// ビューポート設定コマンド
 		const XMFLOAT2 VP_DIV = { 800,450 }; // ビューポート分割座標
+
+		static bool topologyFlag = 0;
+		if (keyboard.isTrigger(DIK_1))
+		{
+			topologyFlag = !topologyFlag;
+		}
+
 		D3D12_VIEWPORT viewport[4]{};
 		for (size_t i = 0; i < 4; i++)
 		{
@@ -482,7 +490,14 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		commandList->SetGraphicsRootSignature(rootSignature);
 
 		// プリミティブ形状の設定コマンド
-		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST); // 三角形リスト
+		if (!topologyFlag)
+		{
+			commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST); // 三角形リスト
+		}
+		else
+		{
+			commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP); // 三角形リスト
+		}
 
 		// 頂点バッファビューの設定コマンド
 		commandList->IASetVertexBuffers(0, 1, &vbView);
