@@ -38,3 +38,29 @@ public:
 	void CompileFromFile(const LPCWSTR fileName,
 		const LPCSTR target, ID3DBlob* errorBlob);
 };
+
+class WindowsAPI
+{
+public:
+	WNDCLASSEX w;
+
+	void CreateWindowClass(UINT cbSize, WNDPROC lpfnWndProc, LPCWSTR lpszClassName, HINSTANCE hInstance, HCURSOR hCursor)
+	{
+		w.cbSize = cbSize;
+		w.lpfnWndProc = lpfnWndProc; // ウィンドウプロシージャを設定
+		w.lpszClassName = lpszClassName; // ウィンドウクラス名
+		w.hInstance = hInstance; // ウィンドウハンドル
+		w.hCursor = hCursor; // カーソル指定
+
+		// ウィンドウクラスをOSに登録する
+		RegisterClassEx(&w);
+	}
+
+	void SetSize(int width, int height)
+	{
+		// ウィンドウサイズ{ X座標 Y座標 横幅 縦幅 }
+		RECT wrc = { 0, 0, width, height };
+		// 自動でサイズを補正する
+		AdjustWindowRect(&wrc, WS_OVERLAPPEDWINDOW, false);
+	}
+};
