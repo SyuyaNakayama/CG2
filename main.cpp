@@ -279,56 +279,16 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	// 頂点1つ分のデータサイズ
 	vbView.StrideInBytes = sizeof(XMFLOAT3);
 
-	ID3DBlob* vsBlob = nullptr; // 頂点シェーダオブジェクト
-	ID3DBlob* psBlob = nullptr; // ピクセルシェーダオブジェクト
+	ShaderBlob vs; // 頂点シェーダオブジェクト
+	ShaderBlob ps; // ピクセルシェーダオブジェクト
 	ID3DBlob* errorBlob = nullptr; // エラーオブジェクト
-	// 頂点シェーダの読み込みとコンパイル
-	result = D3DCompileFromFile(
-		L"BasicVS.hlsl", // シェーダファイル名
-		nullptr,
-		D3D_COMPILE_STANDARD_FILE_INCLUDE, // インクルード可能にする
-		"main", "vs_5_0", // エントリーポイント名、シェーダーモデル指定
-		D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, // デバッグ用設定
-		0,
-		&vsBlob, &errorBlob);
 
-	// エラーなら
-	if (FAILED(result)) {
-		// errorBlobからエラー内容をstring型にコピー
-		std::string error;
-		error.resize(errorBlob->GetBufferSize());
-		std::copy_n((char*)errorBlob->GetBufferPointer(),
-			errorBlob->GetBufferSize(),
-			error.begin());
-		error += "\n";
-		// エラー内容を出力ウィンドウに表示
-		OutputDebugStringA(error.c_str());
-		assert(0);
-	}
+	// 頂点シェーダの読み込みとコンパイル
+	vs.CompileFromFile(L"BasicVS.hlsl", "vs_5_0", errorBlob);
 
 	// ピクセルシェーダの読み込みとコンパイル
-	result = D3DCompileFromFile(
-		L"BasicPS.hlsl", // シェーダファイル名
-		nullptr,
-		D3D_COMPILE_STANDARD_FILE_INCLUDE, // インクルード可能にする
-		"main", "ps_5_0", // エントリーポイント名、シェーダーモデル指定
-		D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, // デバッグ用設定
-		0,
-		&psBlob, &errorBlob);
+	ps.CompileFromFile(L"BasicPS.hlsl", "ps_5_0", errorBlob);
 
-	// エラーなら
-	if (FAILED(result)) {
-		// errorBlobからエラー内容をstring型にコピー
-		std::string error;
-		error.resize(errorBlob->GetBufferSize());
-		std::copy_n((char*)errorBlob->GetBufferPointer(),
-			errorBlob->GetBufferSize(),
-			error.begin());
-		error += "\n";
-		// エラー内容を出力ウィンドウに表示
-		OutputDebugStringA(error.c_str());
-		assert(0);
-	}
 
 	// 頂点レイアウト
 	D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
@@ -343,10 +303,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC pipelineDesc{};
 
 	// シェーダーの設定
-	pipelineDesc.VS.pShaderBytecode = vsBlob->GetBufferPointer();
-	pipelineDesc.VS.BytecodeLength = vsBlob->GetBufferSize();
-	pipelineDesc.PS.pShaderBytecode = psBlob->GetBufferPointer();
-	pipelineDesc.PS.BytecodeLength = psBlob->GetBufferSize();
+	pipelineDesc.VS.pShaderBytecode = vs.blob->GetBufferPointer();
+	pipelineDesc.VS.BytecodeLength = vs.blob->GetBufferSize();
+	pipelineDesc.PS.pShaderBytecode = ps.blob->GetBufferPointer();
+	pipelineDesc.PS.BytecodeLength = ps.blob->GetBufferSize();
 
 	// サンプルマスクの設定
 	pipelineDesc.SampleMask = D3D12_DEFAULT_SAMPLE_MASK; // 標準設定

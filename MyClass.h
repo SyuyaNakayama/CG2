@@ -1,39 +1,40 @@
 #pragma once
 #include <dinput.h>
 #include <cassert>
+#include <d3dcompiler.h>
+#include <string>
 
 class DirectInput
 {
-public:
+protected:
 	IDirectInput8* input;
-	HRESULT result;
 
 	void Initialize(WNDCLASSEX w);
 };
 
 class Keyboard :DirectInput
 {
+private:
+	BYTE key[256];
+	BYTE oldkey[256];
+
 public:
 	IDirectInputDevice8* device;
-	BYTE key[256];
 
 	void GetInstance(WNDCLASSEX w);
 	void SetDataStdFormat();
 	void SetCooperativeLevel(HWND hwnd);
 	void GetDeviceState();
-	bool isInput(const int KEY)
-	{
-		if (key[KEY]) { return true; }
-		return false;
-	}
-	bool isTrigger(const int KEY)
-	{
-		bool flag = false;
+	void TransferOldkey();
+	bool isInput(const int KEY);
+	bool isTrigger(const int KEY);
+};
 
-		static BYTE oldkey[256]{};
+class ShaderBlob
+{
+public:
+	ID3DBlob* blob = nullptr;
 
-		if (!oldkey[KEY] && key[KEY]) { flag = true; }
-		for (size_t i = 0; i < sizeof(oldkey); i++) { oldkey[i] = key[i]; }
-		return flag;
-	}
+	void CompileFromFile(const LPCWSTR fileName,
+		const LPCSTR target, ID3DBlob* errorBlob);
 };
