@@ -1,3 +1,5 @@
 ﻿  main.cpp
   C:\Program Files (x86)\Windows Kits\10\Include\10.0.22000.0\um\dinput.h: DIRECTINPUT_VERSION undefined. Defaulting to version 0x0800
-  CG2.vcxproj -> C:\K021G1352\CG2\x64\Debug\CG2.exe
+C:\K021G1352\CG2\main.cpp(353,7): error C2664: 'void Buffer::SetResource(D3D12_RESOURCE_DIMENSION,UINT64)': 引数 1 を 'int' から 'D3D12_RESOURCE_DIMENSION' へ変換できません。
+C:\K021G1352\CG2\main.cpp(353,20): message : 列挙型への変換には明示的なキャスト (static_cast、C スタイル キャスト、またはかっこで囲まれた関数スタイル キャスト) が必要です
+C:\K021G1352\CG2\MyClass.h(66,7): message : 'Buffer::SetResource' の宣言を確認してください

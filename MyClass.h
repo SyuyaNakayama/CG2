@@ -54,21 +54,21 @@ public:
 class Buffer
 {
 public:
-	D3D12_HEAP_PROPERTIES heapProp;
 	D3D12_RESOURCE_DESC resDesc;
 	ID3D12Resource* buff;
+	UINT size;
 
-	Buffer()
+	Buffer(UINT size)
 	{
-		heapProp = {};
 		resDesc = {};
 		buff = nullptr;
+		this->size = size;
 	}
 
-	void SetResource(D3D12_RESOURCE_DIMENSION Dimension, UINT64 Width)
+	void SetResource(D3D12_RESOURCE_DIMENSION Dimension)
 	{
 		resDesc.Dimension = Dimension;
-		resDesc.Width = Width;
+		resDesc.Width = size;
 		resDesc.Height = 1;
 		resDesc.DepthOrArraySize = 1;
 		resDesc.MipLevels = 1;
@@ -76,7 +76,7 @@ public:
 		resDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 	}
 
-	void CreateBuffer(ID3D12Device* device)
+	void CreateBuffer(ID3D12Device* device, D3D12_HEAP_PROPERTIES heapProp)
 	{
 		assert(SUCCEEDED(
 			device->CreateCommittedResource(

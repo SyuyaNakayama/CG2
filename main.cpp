@@ -245,18 +245,18 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		{ +0.5f, +0.5f, 0.0f }, // 右上
 	};
 
-	Buffer vertex{};
-	vertex.heapProp.Type = D3D12_HEAP_TYPE_UPLOAD;
-	vertex.SetResource(D3D12_RESOURCE_DIMENSION_BUFFER,
-		static_cast<UINT>(sizeof(XMFLOAT3)* _countof(vertices)));
-	vertex.CreateBuffer(device);
+	// 頂点バッファの設定
+	D3D12_HEAP_PROPERTIES heapProp{}; // ヒープ設定
+	heapProp.Type = D3D12_HEAP_TYPE_UPLOAD; // GPUへの転送用
+
+	Buffer vertex(static_cast<UINT>(sizeof(XMFLOAT3) * _countof(vertices)));
+	vertex.SetResource(D3D12_RESOURCE_DIMENSION_BUFFER);
+	vertex.CreateBuffer(device, heapProp);
+
 
 	// 頂点データ全体のサイズ = 頂点データ一つ分のサイズ * 頂点データの要素数
 	UINT sizeVB = static_cast<UINT>(sizeof(XMFLOAT3) * _countof(vertices));
 
-	// 頂点バッファの設定
-	D3D12_HEAP_PROPERTIES heapProp{}; // ヒープ設定
-	heapProp.Type = D3D12_HEAP_TYPE_UPLOAD; // GPUへの転送用
 	// リソース設定
 	D3D12_RESOURCE_DESC resDesc{};
 	resDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
@@ -344,11 +344,14 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	ibView.BufferLocation = indexBuff->GetGPUVirtualAddress();
 	ibView.Format = DXGI_FORMAT_R16_UINT;
 	ibView.SizeInBytes = sizeIB;
-
+#pragma endregion
+	Buffer index(static_cast<UINT>(sizeof(uint16_t) * _countof(indices)));
+	index.SetResource(D3D12_RESOURCE_DIMENSION_BUFFER);
+	index.CreateBuffer(device, heapProp);
+	
 	ShaderBlob vs; // 頂点シェーダオブジェクト
 	ShaderBlob ps; // ピクセルシェーダオブジェクト
 	ID3DBlob* errorBlob = nullptr; // エラーオブジェクト
-#pragma endregion
 
 	// 頂点シェーダの読み込みとコンパイル
 	vs.CompileFromFile(L"BasicVS.hlsl", "vs_5_0", errorBlob);
@@ -516,7 +519,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		commandList->SetGraphicsRootConstantBufferView(0, constBuffMaterial->GetGPUVirtualAddress());
 
 		// 描画コマンド
-		commandList->DrawIndexedInstanced(_countof(indices), 1, 0, 0,0); // 全ての頂点を使って描画
+		commandList->DrawIndexedInstanced(_countof(indices), 1, 0, 0, 0); // 全ての頂点を使って描画
 #pragma endregion
 #pragma endregion
 #pragma region 画面入れ替え
