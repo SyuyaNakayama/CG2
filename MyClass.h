@@ -2,6 +2,7 @@
 #include <dinput.h>
 #include <cassert>
 #include <d3dcompiler.h>
+#include <d3d12.h>
 #include <string>
 
 class DirectInput
@@ -48,23 +49,42 @@ public:
 
 	WindowsAPI(UINT cbSize, WNDPROC lpfnWndProc, LPCWSTR lpszClassName,
 		HINSTANCE hInstance, HCURSOR hCursor, int window_width, int window_height);
-	void CreateWindowClass(UINT cbSize, WNDPROC lpfnWndProc, LPCWSTR lpszClassName, HINSTANCE hInstance, HCURSOR hCursor)
-	{
-		w.cbSize = cbSize;
-		w.lpfnWndProc = lpfnWndProc; // ウィンドウプロシージャを設定
-		w.lpszClassName = lpszClassName; // ウィンドウクラス名
-		w.hInstance = hInstance; // ウィンドウハンドル
-		w.hCursor = hCursor; // カーソル指定
+};
 
-		// ウィンドウクラスをOSに登録する
-		RegisterClassEx(&w);
+class Buffer
+{
+public:
+	D3D12_HEAP_PROPERTIES heapProp;
+	D3D12_RESOURCE_DESC resDesc;
+	ID3D12Resource* buff;
+
+	Buffer()
+	{
+		heapProp = {};
+		resDesc = {};
+		buff = nullptr;
 	}
 
-	void SetSize(int width, int height)
+	void SetResource(D3D12_RESOURCE_DIMENSION Dimension, UINT64 Width)
 	{
-		// ウィンドウサイズ{ X座標 Y座標 横幅 縦幅 }
-		RECT wrc = { 0, 0, width, height };
-		// 自動でサイズを補正する
-		AdjustWindowRect(&wrc, WS_OVERLAPPEDWINDOW, false);
+		resDesc.Dimension = Dimension;
+		resDesc.Width = Width;
+		resDesc.Height = 1;
+		resDesc.DepthOrArraySize = 1;
+		resDesc.MipLevels = 1;
+		resDesc.SampleDesc.Count = 1;
+		resDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	}
+
+	void CreateBuffer(ID3D12Device* device)
+	{
+		assert(SUCCEEDED(
+			device->CreateCommittedResource(
+				&heapProp, // ヒープ設定
+				D3D12_HEAP_FLAG_NONE,
+				&resDesc, // リソース設定
+				D3D12_RESOURCE_STATE_GENERIC_READ,
+				nullptr,
+				IID_PPV_ARGS(&buff))));
 	}
 };

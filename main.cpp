@@ -245,6 +245,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		{ +0.5f, +0.5f, 0.0f }, // 右上
 	};
 
+	Buffer vertex{};
+	vertex.heapProp.Type = D3D12_HEAP_TYPE_UPLOAD;
+	vertex.SetResource(D3D12_RESOURCE_DIMENSION_BUFFER,
+		static_cast<UINT>(sizeof(XMFLOAT3)* _countof(vertices)));
+	vertex.CreateBuffer(device);
+
 	// 頂点データ全体のサイズ = 頂点データ一つ分のサイズ * 頂点データの要素数
 	UINT sizeVB = static_cast<UINT>(sizeof(XMFLOAT3) * _countof(vertices));
 
@@ -433,7 +439,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	result = device->CreateGraphicsPipelineState(&pipelineDesc, IID_PPV_ARGS(&pipelineState));
 	assert(SUCCEEDED(result));
 #pragma endregion
-
 	// ゲームループ
 	while (1)
 	{
