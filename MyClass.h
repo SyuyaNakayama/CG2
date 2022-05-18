@@ -43,7 +43,11 @@ class WindowsAPI
 {
 public:
 	WNDCLASSEX w;
+	RECT wrc;
+	HWND hwnd;
 
+	WindowsAPI(UINT cbSize, WNDPROC lpfnWndProc, LPCWSTR lpszClassName,
+		HINSTANCE hInstance, HCURSOR hCursor, int window_width, int window_height);
 	void CreateWindowClass(UINT cbSize, WNDPROC lpfnWndProc, LPCWSTR lpszClassName, HINSTANCE hInstance, HCURSOR hCursor)
 	{
 		w.cbSize = cbSize;

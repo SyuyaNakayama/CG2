@@ -41,35 +41,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	const int window_width = 1280; // 横幅
 	const int window_height = 720; // 縦幅
 	// ウィンドウクラスの設定
-	WNDCLASSEX w{};
-	w.cbSize = sizeof(WNDCLASSEX);
-	w.lpfnWndProc = (WNDPROC)WindowProc; // ウィンドウプロシージャを設定
-	w.lpszClassName = L"DirectXGame"; // ウィンドウクラス名
-	w.hInstance = GetModuleHandle(nullptr); // ウィンドウハンドル
-	w.hCursor = LoadCursor(NULL, IDC_ARROW); // カーソル指定
-
-	// ウィンドウクラスをOSに登録する
-	RegisterClassEx(&w);
-	// ウィンドウサイズ{ X座標 Y座標 横幅 縦幅 }
-	RECT wrc = { 0, 0, window_width, window_height };
-	// 自動でサイズを補正する
-	AdjustWindowRect(&wrc, WS_OVERLAPPEDWINDOW, false);
-
-	// ウィンドウオブジェクトの生成
-	HWND hwnd = CreateWindow(w.lpszClassName, // クラス名
-		L"LE2A_16_ナカヤマ_シュウヤ_CG2", // タイトルバーの文字
-		WS_OVERLAPPEDWINDOW, // 標準的なウィンドウスタイル
-		CW_USEDEFAULT, // 表示X座標(OSに任せる)
-		CW_USEDEFAULT, // 表示Y座標(OSに任せる)
-		wrc.right - wrc.left, // ウィンドウ横幅
-		wrc.bottom - wrc.top, // ウィンドウ縦幅
-		nullptr, // 親ウィンドウハンドル
-		nullptr, // メニューハンドル
-		w.hInstance, // 呼び出しアプリケーションハンドル
-		nullptr); // オプション
+	WindowsAPI wAPI = { sizeof(WNDCLASSEX),(WNDPROC)WindowProc,L"DirectXGame" ,
+		GetModuleHandle(nullptr),LoadCursor(NULL, IDC_ARROW),window_width,window_height };
 
 	// ウィンドウを表示状態にする
-	ShowWindow(hwnd, SW_SHOW);
+	ShowWindow(wAPI.hwnd, SW_SHOW);
 
 	MSG msg{}; // メッセージ
 #pragma endregion 
@@ -177,7 +153,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
 	// スワップチェーンの生成
 	result = dxgiFactory->CreateSwapChainForHwnd(
-		commandQueue, hwnd, &swapChainDesc, nullptr, nullptr,
+		commandQueue, wAPI.hwnd, &swapChainDesc, nullptr, nullptr,
 		(IDXGISwapChain1**)&swapChain);
 	assert(SUCCEEDED(result));
 
@@ -216,15 +192,51 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	// DirectInputの初期化&キーボードデバイスの生成
 	Keyboard keyboard;
-	keyboard.GetInstance(w);
+	//keyboard.GetInstance(w);
+	keyboard.GetInstance(wAPI.w);
 
 	// 入力データ形式を標準設定でセット
 	keyboard.SetDataStdFormat();
 
 	// 排他制御レベルのセット
-	keyboard.SetCooperativeLevel(hwnd);
+	keyboard.SetCooperativeLevel(wAPI.hwnd);
 #pragma endregion
 #pragma region 描画初期化処理
+	struct ConstBufferDataMaterial
+	{
+		XMFLOAT4 color;
+	};
+
+	// ヒープ設定
+	D3D12_HEAP_PROPERTIES cbHeapProp{};
+	cbHeapProp.Type = D3D12_HEAP_TYPE_UPLOAD;
+
+	// リソース設定
+	D3D12_RESOURCE_DESC cbResourceDesc{};
+	cbResourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	cbResourceDesc.Width = (sizeof(ConstBufferDataMaterial) + 0xff) & ~0xff; // 256バイトアラインメント
+	cbResourceDesc.Height = 1;
+	cbResourceDesc.DepthOrArraySize = 1;
+	cbResourceDesc.MipLevels = 1;
+	cbResourceDesc.SampleDesc.Count = 1;
+	cbResourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+	ID3D12Resource* constBuffMaterial = nullptr;
+	// 定数バッファの生成
+	result = device->CreateCommittedResource(
+		&cbHeapProp, D3D12_HEAP_FLAG_NONE,
+		&cbResourceDesc, D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr, IID_PPV_ARGS(&constBuffMaterial));
+	assert(SUCCEEDED(result));
+
+	// 定数バッファのマッピング
+	ConstBufferDataMaterial* constMapMaterial = nullptr;
+	result = constBuffMaterial->Map(0, nullptr, (void**)&constMapMaterial); // マッピング
+	assert(SUCCEEDED(result));
+
+	// 値を書き込むと自動的に転送される
+	constMapMaterial->color = XMFLOAT4(1, 0, 0, 0.5f);
+
 	// 頂点データ
 	XMFLOAT3 vertices[] =
 	{
@@ -289,7 +301,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	// ピクセルシェーダの読み込みとコンパイル
 	ps.CompileFromFile(L"BasicPS.hlsl", "ps_5_0", errorBlob);
 
-
 	// 頂点レイアウト
 	D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
 		{
@@ -342,11 +353,20 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	pipelineDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB; // 0~255指定のRGBA
 	pipelineDesc.SampleDesc.Count = 1; // 1ピクセルにつき1回サンプリング
 
+	// ルートパラメータの設定
+	D3D12_ROOT_PARAMETER rootParam{};
+	rootParam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;	// 定数バッファビュー
+	rootParam.Descriptor.ShaderRegister = 0;					// 定数バッファ番号
+	rootParam.Descriptor.RegisterSpace = 0;						// デフォルト値
+	rootParam.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;	// 全てのシェーダから見える
+
 	// ルートシグネチャ
 	ID3D12RootSignature* rootSignature;
 	// ルートシグネチャの設定
 	D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc{};
 	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+	rootSignatureDesc.pParameters = &rootParam;
+	rootSignatureDesc.NumParameters = 1;
 	// ルートシグネチャのシリアライズ
 	ID3DBlob* rootSigBlob = nullptr;
 	result = D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_0,
@@ -368,6 +388,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	// ゲームループ
 	while (1)
 	{
+#pragma region ウィンドウメッセージ処理
 		// メッセージがある?
 		if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
 		{
@@ -377,7 +398,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 		// ✖ボタンで終了メッセージが来たらゲームループを抜ける
 		if (msg.message == WM_QUIT) { break; }
-
+#pragma endregion
 #pragma region DirectX毎フレーム処理
 		keyboard.device->Acquire(); // キーボード情報の取得開始
 		// 全キーの入力状態を取得する
@@ -400,7 +421,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		commandList->OMSetRenderTargets(1, &rtvHandle, false, nullptr);
 
 		// 3.画面クリア R G B A
-		FLOAT clearColor[] = { 0.1f,0.25f, 1.0f,0.0f }; // 青っぽい色
+		FLOAT clearColor[] = { 0.1f,0.25f,0.5f,0.0f }; // 青っぽい色
 		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 
 #pragma region 描画コマンド
@@ -430,14 +451,18 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 		// 頂点バッファビューの設定コマンド
 		commandList->IASetVertexBuffers(0, 1, &vbView);
+
 		// ビューポート設定コマンドを、コマンドリストに積む
 		commandList->RSSetViewports(1, &viewport);
+
+		// 定数バッファビューの設定コマンド
+		commandList->SetGraphicsRootConstantBufferView(0, constBuffMaterial->GetGPUVirtualAddress());
 
 		// 描画コマンド
 		commandList->DrawInstanced(_countof(vertices), 1, 0, 0); // 全ての頂点を使って描画
 #pragma endregion
 #pragma endregion
-
+#pragma region 画面入れ替え
 		// 5.リソースバリアを戻す
 		barrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET; // 描画状態から
 		barrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT; // 表示状態へ
@@ -470,10 +495,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		// 再びコマンドリストを貯める準備
 		result = commandList->Reset(commandAllocator, nullptr);
 		assert(SUCCEEDED(result));
+#pragma endregion
 	}
 
 	// ウィンドウクラスを登録解除
-	UnregisterClass(w.lpszClassName, w.hInstance);
+	UnregisterClass(wAPI.w.lpszClassName, wAPI.w.hInstance);
 
 	return 0;
 }
