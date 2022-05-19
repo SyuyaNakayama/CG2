@@ -72,14 +72,13 @@ void ShaderBlob::CompileFromFile(const LPCWSTR fileName, const LPCSTR target, ID
 	}
 }
 
-WindowsAPI::WindowsAPI(UINT cbSize, WNDPROC lpfnWndProc, LPCWSTR lpszClassName, HINSTANCE hInstance,
-	HCURSOR hCursor, int window_width, int window_height)
+WindowsAPI::WindowsAPI(WNDPROC lpfnWndProc, int window_width, int window_height)
 {
-	w.cbSize = cbSize;
+	w.cbSize = sizeof(WNDCLASSEX);
 	w.lpfnWndProc = lpfnWndProc; // ウィンドウプロシージャを設定
-	w.lpszClassName = lpszClassName; // ウィンドウクラス名
-	w.hInstance = hInstance; // ウィンドウハンドル
-	w.hCursor = hCursor; // カーソル指定
+	w.lpszClassName = L"DirectXGame"; // ウィンドウクラス名
+	w.hInstance = GetModuleHandle(nullptr); // ウィンドウハンドル
+	w.hCursor = LoadCursor(NULL, IDC_ARROW); // カーソル指定
 
 	// ウィンドウクラスをOSに登録する
 	RegisterClassEx(&w);
@@ -99,13 +98,6 @@ WindowsAPI::WindowsAPI(UINT cbSize, WNDPROC lpfnWndProc, LPCWSTR lpszClassName, 
 		nullptr, // メニューハンドル
 		w.hInstance, // 呼び出しアプリケーションハンドル
 		nullptr); // オプション
-}
-
-Buffer::Buffer(UINT size)
-{
-	resDesc = {};
-	buff = nullptr;
-	this->size = size;
 }
 
 void Buffer::SetResource(D3D12_RESOURCE_DIMENSION Dimension)
@@ -129,3 +121,48 @@ void Buffer::CreateBuffer(ID3D12Device* device, D3D12_HEAP_PROPERTIES heapProp)
 			nullptr, IID_PPV_ARGS(&buff))));
 }
 
+void Buffer::Init(UINT size)
+{
+	resDesc = {};
+	buff = nullptr;
+	this->size = size;
+}
+
+ConstBuf::ConstBuf(UINT size)
+{
+	Init(size);
+	mapMaterial = nullptr;
+}
+
+void ConstBuf::Mapping()
+{
+	assert(SUCCEEDED(buff->Map(0, nullptr, (void**)&mapMaterial)));
+}
+
+VertexBuf::VertexBuf(UINT size)
+{
+	Init(size);
+	map = nullptr;
+}
+
+void VertexBuf::Mapping(XMFLOAT3* vertices, const int ARRAY_NUM)
+{
+	assert(SUCCEEDED(buff->Map(0, nullptr, (void**)&map)));
+
+	for (int i = 0; i < ARRAY_NUM; i++) { map[i] = vertices[i]; }
+	buff->Unmap(0, nullptr);
+}
+
+IndexBuf::IndexBuf(UINT size)
+{
+	Init(size);
+	map = nullptr;
+}
+
+void IndexBuf::Mapping(uint16_t* indices, const int ARRAY_NUM)
+{
+	assert(SUCCEEDED(buff->Map(0, nullptr, (void**)&map)));
+
+	for (int i = 0; i < ARRAY_NUM; i++) { map[i] = indices[i]; }
+	buff->Unmap(0, nullptr);
+}

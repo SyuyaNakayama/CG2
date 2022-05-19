@@ -41,8 +41,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	const int window_width = 1280; // 横幅
 	const int window_height = 720; // 縦幅
 	// ウィンドウクラスの設定
-	WindowsAPI wAPI = { sizeof(WNDCLASSEX),(WNDPROC)WindowProc,L"DirectXGame" ,
-		GetModuleHandle(nullptr),LoadCursor(NULL, IDC_ARROW),window_width,window_height };
+	WindowsAPI wAPI = { (WNDPROC)WindowProc,		window_width,window_height };
 
 	// ウィンドウを表示状態にする
 	ShowWindow(wAPI.hwnd, SW_SHOW);
@@ -57,7 +56,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		debugController->EnableDebugLayer();
 	}
 #endif
-
 	HRESULT result;
 	ID3D12Device* device = nullptr;
 	IDXGIFactory7* dxgiFactory = nullptr;
@@ -207,17 +205,15 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	D3D12_HEAP_PROPERTIES cbHeapProp{};
 	cbHeapProp.Type = D3D12_HEAP_TYPE_UPLOAD;
 
-	Buffer cb((sizeof(ConstBufferDataMaterial) + 0xff) & ~0xff);
+	ConstBuf cb((sizeof(ConstBufferDataMaterial) + 0xff) & ~0xff);
 	cb.SetResource(D3D12_RESOURCE_DIMENSION_BUFFER);
 	cb.CreateBuffer(device, cbHeapProp);
 
 	// 定数バッファのマッピング
-	ConstBufferDataMaterial* constMapMaterial = nullptr;
-	result = cb.buff->Map(0, nullptr, (void**)&constMapMaterial); // マッピング
-	assert(SUCCEEDED(result));
+	cb.Mapping();
 
 	// 値を書き込むと自動的に転送される
-	constMapMaterial->color = XMFLOAT4(1, 1, 1, 1);
+	cb.mapMaterial->color = XMFLOAT4(1, 1, 1, 1);
 #pragma endregion
 #pragma region 頂点バッファ
 	// 頂点データ
@@ -228,25 +224,15 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		{ +0.5f, -0.5f, 0.0f }, // 右下
 		{ +0.5f, +0.5f, 0.0f }, // 右上
 	};
-
+	
 	// 頂点バッファの設定
 	D3D12_HEAP_PROPERTIES heapProp{}; // ヒープ設定
 	heapProp.Type = D3D12_HEAP_TYPE_UPLOAD; // GPUへの転送用
 
-	Buffer vertex(static_cast<UINT>(sizeof(XMFLOAT3) * _countof(vertices)));
+	VertexBuf vertex(static_cast<UINT>(sizeof(XMFLOAT3) * _countof(vertices)));
 	vertex.SetResource(D3D12_RESOURCE_DIMENSION_BUFFER);
 	vertex.CreateBuffer(device, heapProp);
-
-	// GPU上のバッファに対応した仮想メモリ(メインメモリ上)を取得
-	XMFLOAT3* vertMap = nullptr;
-	result = vertex.buff->Map(0, nullptr, (void**)&vertMap);
-	assert(SUCCEEDED(result));
-	// 全頂点に対して
-	for (int i = 0; i < _countof(vertices); i++) {
-		vertMap[i] = vertices[i]; // 座標をコピー
-	}
-	// 繋がりを解除
-	vertex.buff->Unmap(0, nullptr);
+	vertex.Mapping(vertices, sizeof(vertices) / sizeof(vertices[0]));
 
 	// 頂点バッファビューの作成
 	D3D12_VERTEX_BUFFER_VIEW vbView{};
@@ -265,20 +251,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		1,2,3
 	};
 
-	Buffer index(static_cast<UINT>(sizeof(uint16_t)* _countof(indices)));
+	IndexBuf index(static_cast<UINT>(sizeof(uint16_t) * _countof(indices)));
 	index.SetResource(D3D12_RESOURCE_DIMENSION_BUFFER);
 	index.CreateBuffer(device, heapProp);
-
-	// インデックスバッファをマッピング
-	uint16_t* indexMap = nullptr;
-	result = index.buff->Map(0, nullptr, (void**)&indexMap);
-	assert(SUCCEEDED(result));
-	// 全インデックスに対して
-	for (int i = 0; i < _countof(indices); i++) {
-		indexMap[i] = indices[i]; // インデックスをコピー
-	}
-	// 繋がりを解除
-	index.buff->Unmap(0, nullptr);
+	index.Mapping(indices, sizeof(indices) / sizeof(indices[0]));
 
 	// インデックスビューの作成
 	D3D12_INDEX_BUFFER_VIEW ibView{};
