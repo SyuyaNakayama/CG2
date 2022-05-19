@@ -100,3 +100,32 @@ WindowsAPI::WindowsAPI(UINT cbSize, WNDPROC lpfnWndProc, LPCWSTR lpszClassName, 
 		w.hInstance, // 呼び出しアプリケーションハンドル
 		nullptr); // オプション
 }
+
+Buffer::Buffer(UINT size)
+{
+	resDesc = {};
+	buff = nullptr;
+	this->size = size;
+}
+
+void Buffer::SetResource(D3D12_RESOURCE_DIMENSION Dimension)
+{
+	resDesc.Dimension = Dimension;
+	resDesc.Width = size;
+	resDesc.Height = 1;
+	resDesc.DepthOrArraySize = 1;
+	resDesc.MipLevels = 1;
+	resDesc.SampleDesc.Count = 1;
+	resDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+}
+
+void Buffer::CreateBuffer(ID3D12Device* device, D3D12_HEAP_PROPERTIES heapProp)
+{
+	assert(SUCCEEDED(
+		device->CreateCommittedResource(
+			&heapProp, D3D12_HEAP_FLAG_NONE,
+			&resDesc,
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr, IID_PPV_ARGS(&buff))));
+}
+

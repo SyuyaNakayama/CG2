@@ -58,33 +58,14 @@ public:
 	ID3D12Resource* buff;
 	UINT size;
 
-	Buffer(UINT size)
-	{
-		resDesc = {};
-		buff = nullptr;
-		this->size = size;
-	}
+	Buffer(UINT size);
+	void SetResource(D3D12_RESOURCE_DIMENSION Dimension);
+	void CreateBuffer(ID3D12Device* device, D3D12_HEAP_PROPERTIES heapProp);
+};
 
-	void SetResource(D3D12_RESOURCE_DIMENSION Dimension)
-	{
-		resDesc.Dimension = Dimension;
-		resDesc.Width = size;
-		resDesc.Height = 1;
-		resDesc.DepthOrArraySize = 1;
-		resDesc.MipLevels = 1;
-		resDesc.SampleDesc.Count = 1;
-		resDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-	}
+struct ConstBufferDataMaterial { XMFLOAT4 color; };
 
-	void CreateBuffer(ID3D12Device* device, D3D12_HEAP_PROPERTIES heapProp)
-	{
-		assert(SUCCEEDED(
-			device->CreateCommittedResource(
-				&heapProp, // ヒープ設定
-				D3D12_HEAP_FLAG_NONE,
-				&resDesc, // リソース設定
-				D3D12_RESOURCE_STATE_GENERIC_READ,
-				nullptr,
-				IID_PPV_ARGS(&buff))));
-	}
+class ConstBuf :public Buffer
+{
+	ConstBufferDataMaterial* constMapMaterial;
 };
