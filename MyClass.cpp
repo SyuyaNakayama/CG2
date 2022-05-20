@@ -39,7 +39,8 @@ bool Keyboard::isTrigger(const int KEY)
 	return false;
 }
 
-void ShaderBlob::CompileFromFile(const LPCWSTR fileName, const LPCSTR target, ID3DBlob* errorBlob)
+ShaderBlob::ShaderBlob(const LPCWSTR fileName,
+	const LPCSTR target, ID3DBlob* errorBlob)
 {
 	HRESULT result;
 
@@ -210,4 +211,39 @@ void Pipeline::SetOthers()
 void Pipeline::CreatePipelineState(ID3D12Device* device)
 {
 	assert(SUCCEEDED(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&state))));
+}
+
+void UseBlendMode(D3D12_RENDER_TARGET_BLEND_DESC& blenddesc)
+{
+	blenddesc.BlendEnable = true;
+	blenddesc.BlendOpAlpha = D3D12_BLEND_OP_ADD;	// 加算
+	blenddesc.SrcBlendAlpha = D3D12_BLEND_ONE;		// ソースの値を100%使う
+	blenddesc.DestBlendAlpha = D3D12_BLEND_ZERO;	// 使わない
+}
+
+void SetBlend(D3D12_RENDER_TARGET_BLEND_DESC& blenddesc, int blendMode)
+{
+	switch (blendMode)
+	{
+	case BLENDMODE_ADD:
+		blenddesc.BlendOp = D3D12_BLEND_OP_ADD;
+		blenddesc.SrcBlend = D3D12_BLEND_ONE;
+		blenddesc.DestBlend = D3D12_BLEND_ONE;
+		break;
+	case BLENDMODE_SUB:
+		blenddesc.BlendOp = D3D12_BLEND_OP_REV_SUBTRACT;
+		blenddesc.SrcBlend = D3D12_BLEND_ONE;
+		blenddesc.DestBlend = D3D12_BLEND_ONE;
+		break;
+	case BLENDMODE_COLORFLIP:
+		blenddesc.BlendOp = D3D12_BLEND_OP_ADD;
+		blenddesc.SrcBlend = D3D12_BLEND_INV_DEST_COLOR;
+		blenddesc.DestBlend = D3D12_BLEND_ZERO;
+		break;
+	case BLENDMODE_ALPHA:
+		blenddesc.BlendOp = D3D12_BLEND_OP_ADD;
+		blenddesc.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		blenddesc.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+		break;
+	}
 }

@@ -7,6 +7,17 @@
 #include <DirectXMath.h>
 using namespace DirectX;
 
+struct ConstBufferDataMaterial { XMFLOAT4 color; };
+enum BlendMode
+{
+	BLENDMODE_ADD,
+	BLENDMODE_SUB,
+	BLENDMODE_COLORFLIP,
+	BLENDMODE_ALPHA,
+};
+void UseBlendMode(D3D12_RENDER_TARGET_BLEND_DESC &blenddesc);
+void SetBlend(D3D12_RENDER_TARGET_BLEND_DESC& blenddesc, int blendMode = BLENDMODE_ADD);
+
 class DirectInput
 {
 protected:
@@ -38,8 +49,7 @@ class ShaderBlob
 public:
 	ID3DBlob* blob = nullptr;
 
-	void CompileFromFile(const LPCWSTR fileName,
-		const LPCSTR target, ID3DBlob* errorBlob);
+	ShaderBlob(const LPCWSTR fileName, const LPCSTR target, ID3DBlob* errorBlob);
 };
 
 class WindowsAPI
@@ -52,8 +62,6 @@ public:
 
 	WindowsAPI(WNDPROC lpfnWndProc, int window_width, int window_height);
 };
-
-struct ConstBufferDataMaterial { XMFLOAT4 color; };
 
 class Buffer
 {
@@ -117,4 +125,46 @@ public:
 	void SetPrimitiveTopology();
 	void SetOthers();
 	void CreatePipelineState(ID3D12Device* device);
+};
+
+class RootSignature
+{
+private:
+	D3D12_ROOT_PARAMETER param;
+	D3D12_ROOT_SIGNATURE_DESC desc;
+	ID3DBlob* blob;
+public:
+	ID3D12RootSignature* rs;
+
+	RootSignature()
+	{
+		param = {};
+		desc = {};
+		rs = nullptr;
+		blob = nullptr;
+	}
+
+	void SetParam()
+	{
+		param.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;	// 定数バッファビュー
+		param.Descriptor.ShaderRegister = 0;					// 定数バッファ番号
+		param.Descriptor.RegisterSpace = 0;						// デフォルト値
+		param.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;	// 全てのシェーダから見える
+	}
+	void SetRootSignature()
+	{
+		desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+		desc.pParameters = &param;
+		desc.NumParameters = 1;
+	}
+	void SerializeRootSignature(ID3D12Device* device, ID3DBlob* errorBlob)
+	{
+		HRESULT result = D3D12SerializeRootSignature(&desc,
+			D3D_ROOT_SIGNATURE_VERSION_1_0, &blob, &errorBlob);
+		assert(SUCCEEDED(result));
+		result = device->CreateRootSignature(0, blob->GetBufferPointer(),
+			blob->GetBufferSize(), IID_PPV_ARGS(&rs));
+		assert(SUCCEEDED(result));
+		blob->Release();
+	}
 };

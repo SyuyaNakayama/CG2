@@ -190,7 +190,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	// DirectInputの初期化&キーボードデバイスの生成
 	Keyboard keyboard;
-	//keyboard.GetInstance(w);
 	keyboard.GetInstance(wAPI.w);
 
 	// 入力データ形式を標準設定でセット
@@ -246,18 +245,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	IndexBuf index(static_cast<UINT>(sizeof(uint16_t) * _countof(indices)));
 	index.SetResource(D3D12_RESOURCE_DIMENSION_BUFFER);
 	index.CreateBuffer(device, heapProp);
-	index.Mapping(indices, sizeof(indices) / sizeof(indices[0]));
+	index.Mapping(indices, _countof(indices));
 	index.CreateView(); // インデックスビューの作成
 #pragma endregion	
-	ShaderBlob vs; // 頂点シェーダオブジェクト
-	ShaderBlob ps; // ピクセルシェーダオブジェクト
 	ID3DBlob* errorBlob = nullptr; // エラーオブジェクト
-
-	// 頂点シェーダの読み込みとコンパイル
-	vs.CompileFromFile(L"BasicVS.hlsl", "vs_5_0", errorBlob);
-
-	// ピクセルシェーダの読み込みとコンパイル
-	ps.CompileFromFile(L"BasicPS.hlsl", "ps_5_0", errorBlob);
+	ShaderBlob vs = { L"BasicVS.hlsl", "vs_5_0", errorBlob }; // 頂点シェーダの読み込みとコンパイル
+	ShaderBlob ps = { L"BasicPS.hlsl", "ps_5_0", errorBlob }; // ピクセルシェーダの読み込みとコンパイル
 
 	// 頂点レイアウト
 	D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
@@ -271,7 +264,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	// グラフィックスパイプライン設定
 	Pipeline pipeline{};
 
-	pipeline.SetShader(vs,ps); // シェーダーの設定
+	pipeline.SetShader(vs, ps); // シェーダーの設定
 	pipeline.SetSampleMask(); // サンプルマスクの設定
 	pipeline.SetRasterizer(); // ラスタライザの設定
 	pipeline.SetInputLayout(inputLayout, _countof(inputLayout)); // 頂点レイアウトの設定
@@ -282,41 +275,15 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	D3D12_RENDER_TARGET_BLEND_DESC& blenddesc = pipeline.desc.BlendState.RenderTarget[0];
 	blenddesc.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL; // RBGA全てのチャンネルを描画
 
-	blenddesc.BlendEnable = true;					// ブレンドを有効にする
-	blenddesc.BlendOpAlpha = D3D12_BLEND_OP_ADD;	// 加算
-	blenddesc.SrcBlendAlpha = D3D12_BLEND_ONE;		// ソースの値を100%使う
-	blenddesc.DestBlendAlpha = D3D12_BLEND_ZERO;	// 使わない
+	UseBlendMode(blenddesc); // ブレンドを有効にする
+	SetBlend(blenddesc, BLENDMODE_ALPHA); // 半透明合成
 
-	// 半透明合成
-	blenddesc.BlendOp = D3D12_BLEND_OP_ADD;				// 加算
-	blenddesc.SrcBlend = D3D12_BLEND_SRC_ALPHA;			// ソースのアルファ値
-	blenddesc.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;	// 1.0f-ソースのアルファ値
-
-	// ルートパラメータの設定
-	D3D12_ROOT_PARAMETER rootParam{};
-	rootParam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;	// 定数バッファビュー
-	rootParam.Descriptor.ShaderRegister = 0;					// 定数バッファ番号
-	rootParam.Descriptor.RegisterSpace = 0;						// デフォルト値
-	rootParam.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;	// 全てのシェーダから見える
-
-	// ルートシグネチャ
-	ID3D12RootSignature* rootSignature;
-	// ルートシグネチャの設定
-	D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc{};
-	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-	rootSignatureDesc.pParameters = &rootParam;
-	rootSignatureDesc.NumParameters = 1;
-	// ルートシグネチャのシリアライズ
-	ID3DBlob* rootSigBlob = nullptr;
-	result = D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_0,
-		&rootSigBlob, &errorBlob);
-	assert(SUCCEEDED(result));
-	result = device->CreateRootSignature(0, rootSigBlob->GetBufferPointer(), rootSigBlob->GetBufferSize(),
-		IID_PPV_ARGS(&rootSignature));
-	assert(SUCCEEDED(result));
-	rootSigBlob->Release();
+	RootSignature rootSignature{};		// ルートシグネチャ
+	rootSignature.SetParam();			// ルートパラメータの設定
+	rootSignature.SetRootSignature();	// ルートシグネチャの設定
+	rootSignature.SerializeRootSignature(device, errorBlob);// ルートシグネチャのシリアライズ
 	// パイプラインにルートシグネチャをセット
-	pipeline.desc.pRootSignature = rootSignature;
+	pipeline.desc.pRootSignature = rootSignature.rs;
 
 	// パイプランステートの生成
 	pipeline.CreatePipelineState(device);
@@ -380,7 +347,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		commandList->RSSetScissorRects(1, &scissorRect);
 		// パイプラインステートとルートシグネチャの設定コマンド
 		commandList->SetPipelineState(pipeline.state);
-		commandList->SetGraphicsRootSignature(rootSignature);
+		commandList->SetGraphicsRootSignature(rootSignature.rs);
 
 		// プリミティブ形状の設定コマンド
 		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST); // 三角形リスト
