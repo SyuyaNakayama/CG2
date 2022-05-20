@@ -11,34 +11,28 @@ void Keyboard::GetInstance(WNDCLASSEX w)
 	Initialize(w);
 	assert(SUCCEEDED(input->CreateDevice(GUID_SysKeyboard, &device, NULL)));
 }
-
 void Keyboard::SetDataStdFormat()
 {
 	assert(SUCCEEDED(device->SetDataFormat(&c_dfDIKeyboard)));// 標準形式
 }
-
 void Keyboard::SetCooperativeLevel(HWND hwnd)
 {
 	assert(SUCCEEDED(device->SetCooperativeLevel(
 		hwnd, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE | DISCL_NOWINKEY)));
 }
-
 void Keyboard::GetDeviceState()
 {
 	device->GetDeviceState(sizeof(key), key);
 }
-
 void Keyboard::TransferOldkey()
 {
 	for (size_t i = 0; i < sizeof(oldkey); i++) { oldkey[i] = key[i]; }
 }
-
 bool Keyboard::isInput(const int KEY)
 {
 	if (key[KEY]) { return true; }
 	return false;
 }
-
 bool Keyboard::isTrigger(const int KEY)
 {
 	return (!oldkey[KEY] && key[KEY]);
@@ -110,7 +104,6 @@ void Buffer::SetResource(D3D12_RESOURCE_DIMENSION Dimension)
 	resDesc.SampleDesc.Count = 1;
 	resDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 }
-
 void Buffer::CreateBuffer(ID3D12Device* device, D3D12_HEAP_PROPERTIES heapProp)
 {
 	assert(SUCCEEDED(
@@ -120,7 +113,6 @@ void Buffer::CreateBuffer(ID3D12Device* device, D3D12_HEAP_PROPERTIES heapProp)
 			D3D12_RESOURCE_STATE_GENERIC_READ,
 			nullptr, IID_PPV_ARGS(&buff))));
 }
-
 void Buffer::Init(UINT size)
 {
 	resDesc = {};
@@ -133,7 +125,6 @@ ConstBuf::ConstBuf(UINT size)
 	Init(size);
 	mapMaterial = nullptr;
 }
-
 void ConstBuf::Mapping()
 {
 	assert(SUCCEEDED(buff->Map(0, nullptr, (void**)&mapMaterial)));
@@ -143,8 +134,8 @@ VertexBuf::VertexBuf(UINT size)
 {
 	Init(size);
 	map = nullptr;
+	view = {};
 }
-
 void VertexBuf::Mapping(XMFLOAT3* vertices, const int ARRAY_NUM)
 {
 	assert(SUCCEEDED(buff->Map(0, nullptr, (void**)&map)));
@@ -152,17 +143,71 @@ void VertexBuf::Mapping(XMFLOAT3* vertices, const int ARRAY_NUM)
 	for (int i = 0; i < ARRAY_NUM; i++) { map[i] = vertices[i]; }
 	buff->Unmap(0, nullptr);
 }
+void VertexBuf::CreateView()
+{
+	view.BufferLocation = buff->GetGPUVirtualAddress();
+	view.SizeInBytes = size;
+	view.StrideInBytes = sizeof(XMFLOAT3);
+}
 
 IndexBuf::IndexBuf(UINT size)
 {
 	Init(size);
 	map = nullptr;
+	view = {};
 }
-
 void IndexBuf::Mapping(uint16_t* indices, const int ARRAY_NUM)
 {
 	assert(SUCCEEDED(buff->Map(0, nullptr, (void**)&map)));
 
 	for (int i = 0; i < ARRAY_NUM; i++) { map[i] = indices[i]; }
 	buff->Unmap(0, nullptr);
+}
+void IndexBuf::CreateView()
+{
+	view.BufferLocation = buff->GetGPUVirtualAddress();
+	view.Format = DXGI_FORMAT_R16_UINT;
+	view.SizeInBytes = size;
+}
+
+Pipeline::Pipeline()
+{
+	desc = {};
+	state = nullptr;
+}
+void Pipeline::SetShader(ShaderBlob vs, ShaderBlob ps)
+{
+	desc.VS.pShaderBytecode = vs.blob->GetBufferPointer();
+	desc.VS.BytecodeLength = vs.blob->GetBufferSize();
+	desc.PS.pShaderBytecode = ps.blob->GetBufferPointer();
+	desc.PS.BytecodeLength = ps.blob->GetBufferSize();
+}
+void Pipeline::SetSampleMask()
+{
+	desc.SampleMask = D3D12_DEFAULT_SAMPLE_MASK; // 標準設定
+}
+void Pipeline::SetRasterizer()
+{
+	desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE; // カリングしない
+	desc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID; // ポリゴン内塗りつぶし
+	desc.RasterizerState.DepthClipEnable = true; // 深度クリッピングを有効に
+}
+void Pipeline::SetInputLayout(D3D12_INPUT_ELEMENT_DESC* inputLayout, UINT layoutNum)
+{
+	desc.InputLayout.pInputElementDescs = inputLayout;
+	desc.InputLayout.NumElements = layoutNum;
+}
+void Pipeline::SetPrimitiveTopology()
+{
+	desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+}
+void Pipeline::SetOthers()
+{
+	desc.NumRenderTargets = 1; // 描画対象は1つ
+	desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB; // 0~255指定のRGBA
+	desc.SampleDesc.Count = 1; // 1ピクセルにつき1回サンプリング
+}
+void Pipeline::CreatePipelineState(ID3D12Device* device)
+{
+	assert(SUCCEEDED(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&state))));
 }

@@ -41,7 +41,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	const int window_width = 1280; // 横幅
 	const int window_height = 720; // 縦幅
 	// ウィンドウクラスの設定
-	WindowsAPI wAPI = { (WNDPROC)WindowProc,		window_width,window_height };
+	WindowsAPI wAPI = { (WNDPROC)WindowProc,window_width,window_height };
 
 	// ウィンドウを表示状態にする
 	ShowWindow(wAPI.hwnd, SW_SHOW);
@@ -224,7 +224,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		{ +0.5f, -0.5f, 0.0f }, // 右下
 		{ +0.5f, +0.5f, 0.0f }, // 右上
 	};
-	
+
 	// 頂点バッファの設定
 	D3D12_HEAP_PROPERTIES heapProp{}; // ヒープ設定
 	heapProp.Type = D3D12_HEAP_TYPE_UPLOAD; // GPUへの転送用
@@ -232,35 +232,22 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	VertexBuf vertex(static_cast<UINT>(sizeof(XMFLOAT3) * _countof(vertices)));
 	vertex.SetResource(D3D12_RESOURCE_DIMENSION_BUFFER);
 	vertex.CreateBuffer(device, heapProp);
-	vertex.Mapping(vertices, sizeof(vertices) / sizeof(vertices[0]));
-
-	// 頂点バッファビューの作成
-	D3D12_VERTEX_BUFFER_VIEW vbView{};
-	// GPU仮想アドレス
-	vbView.BufferLocation = vertex.buff->GetGPUVirtualAddress();
-	// 頂点バッファのサイズ
-	vbView.SizeInBytes = vertex.size;
-	// 頂点1つ分のデータサイズ
-	vbView.StrideInBytes = sizeof(XMFLOAT3);
+	vertex.Mapping(vertices, _countof(vertices));
+	vertex.CreateView(); // 頂点バッファビューの作成
 #pragma endregion
 #pragma region インデックスバッファ
 	// インデックスデータ
 	uint16_t indices[] =
 	{
 		0,1,2,
-		1,2,3
+		1,2,3,
 	};
 
 	IndexBuf index(static_cast<UINT>(sizeof(uint16_t) * _countof(indices)));
 	index.SetResource(D3D12_RESOURCE_DIMENSION_BUFFER);
 	index.CreateBuffer(device, heapProp);
 	index.Mapping(indices, sizeof(indices) / sizeof(indices[0]));
-
-	// インデックスビューの作成
-	D3D12_INDEX_BUFFER_VIEW ibView{};
-	ibView.BufferLocation = index.buff->GetGPUVirtualAddress();
-	ibView.Format = DXGI_FORMAT_R16_UINT;
-	ibView.SizeInBytes = index.size;
+	index.CreateView(); // インデックスビューの作成
 #pragma endregion	
 	ShaderBlob vs; // 頂点シェーダオブジェクト
 	ShaderBlob ps; // ピクセルシェーダオブジェクト
@@ -282,24 +269,17 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	};
 
 	// グラフィックスパイプライン設定
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC pipelineDesc{};
+	Pipeline pipeline{};
 
-	// シェーダーの設定
-	pipelineDesc.VS.pShaderBytecode = vs.blob->GetBufferPointer();
-	pipelineDesc.VS.BytecodeLength = vs.blob->GetBufferSize();
-	pipelineDesc.PS.pShaderBytecode = ps.blob->GetBufferPointer();
-	pipelineDesc.PS.BytecodeLength = ps.blob->GetBufferSize();
-
-	// サンプルマスクの設定
-	pipelineDesc.SampleMask = D3D12_DEFAULT_SAMPLE_MASK; // 標準設定
-
-	// ラスタライザの設定
-	pipelineDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE; // カリングしない
-	pipelineDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID; // ポリゴン内塗りつぶし
-	pipelineDesc.RasterizerState.DepthClipEnable = true; // 深度クリッピングを有効に
+	pipeline.SetShader(vs,ps); // シェーダーの設定
+	pipeline.SetSampleMask(); // サンプルマスクの設定
+	pipeline.SetRasterizer(); // ラスタライザの設定
+	pipeline.SetInputLayout(inputLayout, _countof(inputLayout)); // 頂点レイアウトの設定
+	pipeline.SetPrimitiveTopology(); // 図形の形状設定
+	pipeline.SetOthers(); // その他の設定
 
 	// レンダーターゲットのブレンド設定
-	D3D12_RENDER_TARGET_BLEND_DESC& blenddesc = pipelineDesc.BlendState.RenderTarget[0];
+	D3D12_RENDER_TARGET_BLEND_DESC& blenddesc = pipeline.desc.BlendState.RenderTarget[0];
 	blenddesc.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL; // RBGA全てのチャンネルを描画
 
 	blenddesc.BlendEnable = true;					// ブレンドを有効にする
@@ -311,18 +291,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	blenddesc.BlendOp = D3D12_BLEND_OP_ADD;				// 加算
 	blenddesc.SrcBlend = D3D12_BLEND_SRC_ALPHA;			// ソースのアルファ値
 	blenddesc.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;	// 1.0f-ソースのアルファ値
-
-	// 頂点レイアウトの設定
-	pipelineDesc.InputLayout.pInputElementDescs = inputLayout;
-	pipelineDesc.InputLayout.NumElements = _countof(inputLayout);
-
-	// 図形の形状設定
-	pipelineDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-
-	// その他の設定
-	pipelineDesc.NumRenderTargets = 1; // 描画対象は1つ
-	pipelineDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB; // 0~255指定のRGBA
-	pipelineDesc.SampleDesc.Count = 1; // 1ピクセルにつき1回サンプリング
 
 	// ルートパラメータの設定
 	D3D12_ROOT_PARAMETER rootParam{};
@@ -348,12 +316,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	assert(SUCCEEDED(result));
 	rootSigBlob->Release();
 	// パイプラインにルートシグネチャをセット
-	pipelineDesc.pRootSignature = rootSignature;
+	pipeline.desc.pRootSignature = rootSignature;
 
 	// パイプランステートの生成
-	ID3D12PipelineState* pipelineState = nullptr;
-	result = device->CreateGraphicsPipelineState(&pipelineDesc, IID_PPV_ARGS(&pipelineState));
-	assert(SUCCEEDED(result));
+	pipeline.CreatePipelineState(device);
 #pragma endregion
 	// ゲームループ
 	while (1)
@@ -413,17 +379,17 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		// シザー矩形設定コマンドを、コマンドリストに積む
 		commandList->RSSetScissorRects(1, &scissorRect);
 		// パイプラインステートとルートシグネチャの設定コマンド
-		commandList->SetPipelineState(pipelineState);
+		commandList->SetPipelineState(pipeline.state);
 		commandList->SetGraphicsRootSignature(rootSignature);
 
 		// プリミティブ形状の設定コマンド
 		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST); // 三角形リスト
 
 		// 頂点バッファビューの設定コマンド
-		commandList->IASetVertexBuffers(0, 1, &vbView);
+		commandList->IASetVertexBuffers(0, 1, &vertex.view);
 
 		// 頂点バッファビューの設定コマンド
-		commandList->IASetIndexBuffer(&ibView);
+		commandList->IASetIndexBuffer(&index.view);
 
 		// ビューポート設定コマンドを、コマンドリストに積む
 		commandList->RSSetViewports(1, &viewport);
@@ -458,8 +424,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		{
 			HANDLE event = CreateEvent(nullptr, false, false, nullptr);
 			fence->SetEventOnCompletion(fenceVal, event);
-			WaitForSingleObject(event, INFINITE);
-			CloseHandle(event);
+			if (event != 0)
+			{
+				WaitForSingleObject(event, INFINITE);
+				CloseHandle(event);
+			}
 		}
 
 		// キューをクリア
