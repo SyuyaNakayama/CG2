@@ -1,38 +1,6 @@
-﻿#include <Windows.h>
-#include <d3d12.h>
-#include <dxgi1_6.h>
-#include <cassert>
-#include <vector>
-#include <string>
-#include <DirectXMath.h>
-#include <d3dcompiler.h>
-#include <dinput.h>
-#include "MyClass.h"
-
-#pragma comment(lib, "d3d12.lib")
-#pragma comment(lib, "dxgi.lib")
-#pragma comment(lib, "d3dcompiler.lib")
-#pragma comment(lib, "dinput8.lib")
-#pragma comment(lib, "dxguid.lib")
+﻿#include "MyClass.h"
 
 using namespace DirectX;
-
-// ウィンドウプロシージャ
-LRESULT WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
-{
-	// メッセージに応じてゲーム固有の処理を行う
-	switch (msg)
-	{
-		// ウィンドウが破棄された
-	case WM_DESTROY:
-		// OSに対して、アプリの終了を伝える
-		PostQuitMessage(0);
-		return 0;
-	}
-
-	// 標準のメッセージ処理を行う
-	return DefWindowProc(hwnd, msg, wparam, lparam);
-}
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
@@ -58,44 +26,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 #endif
 	HRESULT result;
 	ID3D12Device* device = nullptr;
-	IDXGIFactory7* dxgiFactory = nullptr;
 	IDXGISwapChain4* swapChain = nullptr;
 	ID3D12CommandAllocator* commandAllocator = nullptr;
 	ID3D12GraphicsCommandList* commandList = nullptr;
 	ID3D12CommandQueue* commandQueue = nullptr;
 	ID3D12DescriptorHeap* rtvHeap = nullptr;
-
-	// DXGIファクトリーの生成
-	result = CreateDXGIFactory(IID_PPV_ARGS(&dxgiFactory));
-	assert(SUCCEEDED(result));
-	// アダプターの列挙用
-	std::vector<IDXGIAdapter4*> adapters;
-	// ここに特定の名前を持つアダプターオブジェクトが入る
-	IDXGIAdapter4* tmpAdapter = nullptr;
-	// パフォーマンスが高いものから順に、全てのアダプターを列挙する
-	for (UINT i = 0;
-		dxgiFactory->EnumAdapterByGpuPreference(i,
-			DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
-			IID_PPV_ARGS(&tmpAdapter)) != DXGI_ERROR_NOT_FOUND;
-		i++)
-	{
-		// 動的配列に追加する
-		adapters.push_back(tmpAdapter);
-	}
-	// 妥当なアダプタを選別する
-	for (size_t i = 0; i < adapters.size(); i++)
-	{
-		DXGI_ADAPTER_DESC3 adapterDesc;
-		// アダプターの情報を取得する
-		adapters[i]->GetDesc3(&adapterDesc);
-		// ソフトウェアデバイスを回避
-		if (!(adapterDesc.Flags & DXGI_ADAPTER_FLAG3_SOFTWARE))
-		{
-			// デバイスを採用してループを抜ける
-			tmpAdapter = adapters[i];
-			break;
-		}
-	}
 
 	// 対応レベルの配列
 	D3D_FEATURE_LEVEL levels[] =
@@ -106,19 +41,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		D3D_FEATURE_LEVEL_11_0,
 	};
 
-	D3D_FEATURE_LEVEL featureLevel;
-	for (size_t i = 0; i < _countof(levels); i++)
-	{
-		// 採用したアダプターでデバイスを生成
-		result = D3D12CreateDevice(tmpAdapter, levels[i],
-			IID_PPV_ARGS(&device));
-		if (result == S_OK)
-		{
-			// デバイスを生成できた時点でループを抜ける
-			featureLevel = levels[i];
-			break;
-		}
-	}
+	DirectXInit directX{};
+	directX.AdapterChoice();
+	device = directX.CreateDevice(levels, _countof(levels), device);
 
 	// コマンドアロケータを生成
 	result = device->CreateCommandAllocator(
@@ -150,7 +75,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD; // フリップ後は破棄
 	swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
 	// スワップチェーンの生成
-	result = dxgiFactory->CreateSwapChainForHwnd(
+	result = directX.dxgiFactory->CreateSwapChainForHwnd(
 		commandQueue, wAPI.hwnd, &swapChainDesc, nullptr, nullptr,
 		(IDXGISwapChain1**)&swapChain);
 	assert(SUCCEEDED(result));
@@ -338,7 +263,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	RootSignature rootSignature{};								// ルートシグネチャ
 	rootSignature.SetParam(descriptorRange);					// ルートパラメータの設定
-	rootSignature.SetRootSignature(samplerDesc);							// ルートシグネチャの設定
+	rootSignature.SetRootSignature(samplerDesc);				// ルートシグネチャの設定
 	rootSignature.SerializeRootSignature(device, errorBlob);	// ルートシグネチャのシリアライズ
 	// パイプラインにルートシグネチャをセット
 	pipeline.desc.pRootSignature = rootSignature.rs;
@@ -406,22 +331,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		// パイプラインステートとルートシグネチャの設定コマンド
 		commandList->SetPipelineState(pipeline.state);
 		commandList->SetGraphicsRootSignature(rootSignature.rs);
-
-		// プリミティブ形状の設定コマンド
-		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST); // 三角形リスト
-
-		// 頂点バッファビューの設定コマンド
-		commandList->IASetVertexBuffers(0, 1, &vertex.view);
-
-		// 頂点バッファビューの設定コマンド
-		commandList->IASetIndexBuffer(&index.view);
-
-		// ビューポート設定コマンドを、コマンドリストに積む
-		commandList->RSSetViewports(1, &viewport);
-
+		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST); // プリミティブ形状の設定コマンド
+		commandList->IASetVertexBuffers(0, 1, &vertex.view); // 頂点バッファビューの設定コマンド
+		commandList->IASetIndexBuffer(&index.view); // 頂点バッファビューの設定コマンド
+		commandList->RSSetViewports(1, &viewport); // ビューポート設定コマンドを、コマンドリストに積む
 		// 定数バッファビューの設定コマンド
 		commandList->SetGraphicsRootConstantBufferView(0, cb.buff->GetGPUVirtualAddress());
-
 		commandList->SetDescriptorHeaps(1, &srvHeap);
 		D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle = srvHeap->GetGPUDescriptorHandleForHeapStart();
 		commandList->SetGraphicsRootDescriptorTable(1, srvGpuHandle);

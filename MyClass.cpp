@@ -39,8 +39,7 @@ bool Keyboard::isTrigger(const int KEY)
 	return false;
 }
 
-ShaderBlob::ShaderBlob(const LPCWSTR fileName,
-	const LPCSTR target, ID3DBlob* errorBlob)
+ShaderBlob::ShaderBlob(const LPCWSTR fileName, const LPCSTR target, ID3DBlob* errorBlob)
 {
 	HRESULT result;
 
@@ -65,6 +64,23 @@ ShaderBlob::ShaderBlob(const LPCWSTR fileName,
 		OutputDebugStringA(error.c_str());
 		assert(0);
 	}
+}
+
+// ウィンドウプロシージャ
+LRESULT WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+	// メッセージに応じてゲーム固有の処理を行う
+	switch (msg)
+	{
+		// ウィンドウが破棄された
+	case WM_DESTROY:
+		// OSに対して、アプリの終了を伝える
+		PostQuitMessage(0);
+		return 0;
+	}
+
+	// 標準のメッセージ処理を行う
+	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
 
 WindowsAPI::WindowsAPI(WNDPROC lpfnWndProc, int window_width, int window_height)

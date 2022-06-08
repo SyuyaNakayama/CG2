@@ -1,11 +1,19 @@
 #pragma once
-#include <dinput.h>
-#include <cassert>
-#include <d3dcompiler.h>
+#include <Windows.h>
 #include <d3d12.h>
+#include <dxgi1_6.h>
+#include <cassert>
+#include <vector>
 #include <string>
 #include <DirectXMath.h>
-#include <vector>
+#include <d3dcompiler.h>
+#include <dinput.h>
+
+#pragma comment(lib, "d3d12.lib")
+#pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "d3dcompiler.lib")
+#pragma comment(lib, "dinput8.lib")
+#pragma comment(lib, "dxguid.lib")
 using namespace DirectX;
 
 struct ConstBufferDataMaterial { XMFLOAT4 color; };
@@ -53,6 +61,7 @@ public:
 	ShaderBlob(const LPCWSTR fileName, const LPCSTR target, ID3DBlob* errorBlob);
 };
 
+LRESULT WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
 class WindowsAPI
 {
 private:
@@ -195,20 +204,60 @@ public:
 	}
 };
 
-//class ResourceBarrier
-//{
-//public:
-//	D3D12_RESOURCE_BARRIER desc;
-//
-//	ResourceBarrier(std::vector<ID3D12Resource*> backBuffers, UINT bbIndex)
-//	{
-//		desc.Transition.pResource = backBuffers[bbIndex]; // バックバッファを指定
-//		desc.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT; // 表示状態から
-//		desc.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET; // 描画状態へ
-//	}
-//	void BarrierFlip()
-//	{
-//		desc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET; // 描画状態から
-//		desc.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT; // 表示状態へ
-//	}
-//};
+class DirectXInit
+{
+	std::vector<IDXGIAdapter4*> adapters;
+	IDXGIAdapter4* tmpAdapter;
+	D3D_FEATURE_LEVEL featureLevel;
+public:
+	IDXGIFactory7* dxgiFactory;
+
+	DirectXInit()
+	{
+		assert(SUCCEEDED(CreateDXGIFactory(IID_PPV_ARGS(&dxgiFactory))));
+	}
+	void AdapterChoice()
+	{
+		// パフォーマンスが高いものから順に、全てのアダプターを列挙する
+		for (UINT i = 0;
+			dxgiFactory->EnumAdapterByGpuPreference(i,
+				DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+				IID_PPV_ARGS(&tmpAdapter)) != DXGI_ERROR_NOT_FOUND;
+			i++)
+		{
+			// 動的配列に追加する
+			adapters.push_back(tmpAdapter);
+		}
+		// 妥当なアダプタを選別する
+		for (size_t i = 0; i < adapters.size(); i++)
+		{
+			DXGI_ADAPTER_DESC3 adapterDesc;
+			// アダプターの情報を取得する
+			adapters[i]->GetDesc3(&adapterDesc);
+			// ソフトウェアデバイスを回避
+			if (!(adapterDesc.Flags & DXGI_ADAPTER_FLAG3_SOFTWARE))
+			{
+				// デバイスを採用してループを抜ける
+				tmpAdapter = adapters[i];
+				break;
+			}
+		}
+	}
+	ID3D12Device* CreateDevice(D3D_FEATURE_LEVEL* levels, size_t levelsNum, ID3D12Device* device)
+	{
+		HRESULT result;
+
+		for (size_t i = 0; i < levelsNum; i++)
+		{
+			// 採用したアダプターでデバイスを生成
+			result = D3D12CreateDevice(tmpAdapter, levels[i], IID_PPV_ARGS(&device));
+			if (result == S_OK)
+			{
+				// デバイスを生成できた時点でループを抜ける
+				featureLevel = levels[i];
+				return device;
+			}
+		}
+	}
+
+};
