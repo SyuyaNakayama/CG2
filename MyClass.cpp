@@ -95,15 +95,16 @@ WindowsAPI::WindowsAPI(WNDPROC lpfnWndProc, int window_width, int window_height)
 		nullptr); // ƒIƒvƒVƒ‡ƒ“
 }
 
-void Buffer::SetResource(D3D12_RESOURCE_DIMENSION Dimension)
+void Buffer::SetResource(size_t width, size_t height, D3D12_RESOURCE_DIMENSION Dimension, bool isTexRes)
 {
 	resDesc.Dimension = Dimension;
-	resDesc.Width = size;
-	resDesc.Height = 1;
+	resDesc.Width = width;
+	resDesc.Height = height;
 	resDesc.DepthOrArraySize = 1;
 	resDesc.MipLevels = 1;
 	resDesc.SampleDesc.Count = 1;
-	resDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	if (!isTexRes) { resDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR; }
+	else { resDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT; }
 }
 void Buffer::CreateBuffer(ID3D12Device* device, D3D12_HEAP_PROPERTIES heapProp)
 {
@@ -114,16 +115,16 @@ void Buffer::CreateBuffer(ID3D12Device* device, D3D12_HEAP_PROPERTIES heapProp)
 			D3D12_RESOURCE_STATE_GENERIC_READ,
 			nullptr, IID_PPV_ARGS(&buff))));
 }
-void Buffer::Init(UINT size)
+void Buffer::Init()
 {
 	resDesc = {};
 	buff = nullptr;
-	this->size = size;
 }
 
 ConstBuf::ConstBuf(UINT size)
 {
-	Init(size);
+	Init();
+	this->size = size;
 	mapMaterial = nullptr;
 }
 void ConstBuf::Mapping()
@@ -133,11 +134,12 @@ void ConstBuf::Mapping()
 
 VertexBuf::VertexBuf(UINT size)
 {
-	Init(size);
+	Init();
+	this->size = size;
 	map = nullptr;
 	view = {};
 }
-void VertexBuf::Mapping(XMFLOAT3* vertices, const int ARRAY_NUM)
+void VertexBuf::Mapping(Vertex* vertices, const int ARRAY_NUM)
 {
 	assert(SUCCEEDED(buff->Map(0, nullptr, (void**)&map)));
 
@@ -148,12 +150,13 @@ void VertexBuf::CreateView()
 {
 	view.BufferLocation = buff->GetGPUVirtualAddress();
 	view.SizeInBytes = size;
-	view.StrideInBytes = sizeof(XMFLOAT3);
+	view.StrideInBytes = sizeof(Vertex);
 }
 
 IndexBuf::IndexBuf(UINT size)
 {
-	Init(size);
+	Init();
+	this->size = size;
 	map = nullptr;
 	view = {};
 }
@@ -169,6 +172,27 @@ void IndexBuf::CreateView()
 	view.BufferLocation = buff->GetGPUVirtualAddress();
 	view.Format = DXGI_FORMAT_R16_UINT;
 	view.SizeInBytes = size;
+}
+
+TextureBuf::TextureBuf()
+{
+	Init();
+	view = {};
+}
+void TextureBuf::Transfer(size_t textureWidth, size_t imageDataCount, XMFLOAT4* imageData)
+{
+	HRESULT result = buff->WriteToSubresource(
+		0, nullptr, imageData,
+		sizeof(XMFLOAT4) * textureWidth,
+		sizeof(XMFLOAT4) * imageDataCount);
+	assert(SUCCEEDED(result));
+}
+void TextureBuf::CreateView()
+{
+	view.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	view.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	view.Texture2D.MipLevels = 1;
 }
 
 Pipeline::Pipeline()

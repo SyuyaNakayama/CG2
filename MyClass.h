@@ -5,6 +5,7 @@
 #include <d3d12.h>
 #include <string>
 #include <DirectXMath.h>
+#include <vector>
 using namespace DirectX;
 
 struct ConstBufferDataMaterial { XMFLOAT4 color; };
@@ -15,7 +16,7 @@ enum BlendMode
 	BLENDMODE_COLORFLIP,
 	BLENDMODE_ALPHA,
 };
-void UseBlendMode(D3D12_RENDER_TARGET_BLEND_DESC &blenddesc);
+void UseBlendMode(D3D12_RENDER_TARGET_BLEND_DESC& blenddesc);
 void SetBlend(D3D12_RENDER_TARGET_BLEND_DESC& blenddesc, int blendMode = BLENDMODE_ADD);
 
 class DirectInput
@@ -68,13 +69,11 @@ class Buffer
 private:
 	D3D12_RESOURCE_DESC resDesc;
 protected:
-	UINT size;
-
-	void Init(UINT size);
+	void Init();
 public:
 	ID3D12Resource* buff;
 
-	void SetResource(D3D12_RESOURCE_DIMENSION Dimension);
+	void SetResource(size_t width, size_t height, D3D12_RESOURCE_DIMENSION Dimension, bool isTexRes = 0);
 	void CreateBuffer(ID3D12Device* device, D3D12_HEAP_PROPERTIES heapProp);
 };
 
@@ -82,20 +81,28 @@ class ConstBuf :public Buffer
 {
 public:
 	ConstBufferDataMaterial* mapMaterial;
+	UINT size;
 
 	ConstBuf(UINT size);
 	void Mapping();
 };
 
+struct Vertex
+{
+	XMFLOAT3 pos;
+	XMFLOAT2 uv;
+};
+
 class VertexBuf :public Buffer
 {
 private:
-	XMFLOAT3* map;
+	Vertex* map;
 public:
 	D3D12_VERTEX_BUFFER_VIEW view;
+	UINT size;
 
 	VertexBuf(UINT size);
-	void Mapping(XMFLOAT3* vertices, const int ARRAY_NUM);
+	void Mapping(Vertex* vertices, const int ARRAY_NUM);
 	void CreateView();
 };
 
@@ -105,9 +112,20 @@ private:
 	uint16_t* map;
 public:
 	D3D12_INDEX_BUFFER_VIEW view;
+	UINT size;
 
 	IndexBuf(UINT size);
 	void Mapping(uint16_t* indices, const int ARRAY_NUM);
+	void CreateView();
+};
+
+class TextureBuf :public Buffer
+{
+public:
+	D3D12_SHADER_RESOURCE_VIEW_DESC view;
+
+	TextureBuf();
+	void Transfer(size_t textureWidth, size_t imageDataCount, XMFLOAT4* imageData);
 	void CreateView();
 };
 
@@ -130,7 +148,7 @@ public:
 class RootSignature
 {
 private:
-	D3D12_ROOT_PARAMETER param;
+	D3D12_ROOT_PARAMETER params[2];
 	D3D12_ROOT_SIGNATURE_DESC desc;
 	ID3DBlob* blob;
 public:
@@ -138,24 +156,32 @@ public:
 
 	RootSignature()
 	{
-		param = {};
+		params[0] = {};
+		params[1] = {};
 		desc = {};
 		rs = nullptr;
 		blob = nullptr;
 	}
 
-	void SetParam()
+	void SetParam(D3D12_DESCRIPTOR_RANGE descriptorRange)
 	{
-		param.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;	// 定数バッファビュー
-		param.Descriptor.ShaderRegister = 0;					// 定数バッファ番号
-		param.Descriptor.RegisterSpace = 0;						// デフォルト値
-		param.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;	// 全てのシェーダから見える
+		params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;	// 定数バッファビュー
+		params[0].Descriptor.ShaderRegister = 0;					// 定数バッファ番号
+		params[0].Descriptor.RegisterSpace = 0;						// デフォルト値
+		params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;	// 全てのシェーダから見える
+
+		params[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+		params[1].DescriptorTable.pDescriptorRanges = &descriptorRange;
+		params[1].DescriptorTable.NumDescriptorRanges = 1;
+		params[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 	}
-	void SetRootSignature()
+	void SetRootSignature(D3D12_STATIC_SAMPLER_DESC samplerDesc)
 	{
 		desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-		desc.pParameters = &param;
-		desc.NumParameters = 1;
+		desc.pParameters = params;
+		desc.NumParameters = _countof(params);
+		desc.pStaticSamplers = &samplerDesc;
+		desc.NumStaticSamplers = 1;
 	}
 	void SerializeRootSignature(ID3D12Device* device, ID3DBlob* errorBlob)
 	{
@@ -168,3 +194,21 @@ public:
 		blob->Release();
 	}
 };
+
+//class ResourceBarrier
+//{
+//public:
+//	D3D12_RESOURCE_BARRIER desc;
+//
+//	ResourceBarrier(std::vector<ID3D12Resource*> backBuffers, UINT bbIndex)
+//	{
+//		desc.Transition.pResource = backBuffers[bbIndex]; // バックバッファを指定
+//		desc.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT; // 表示状態から
+//		desc.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET; // 描画状態へ
+//	}
+//	void BarrierFlip()
+//	{
+//		desc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET; // 描画状態から
+//		desc.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT; // 表示状態へ
+//	}
+//};

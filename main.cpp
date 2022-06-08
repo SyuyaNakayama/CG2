@@ -205,7 +205,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	cbHeapProp.Type = D3D12_HEAP_TYPE_UPLOAD;
 
 	ConstBuf cb((sizeof(ConstBufferDataMaterial) + 0xff) & ~0xff);
-	cb.SetResource(D3D12_RESOURCE_DIMENSION_BUFFER);
+	cb.SetResource(cb.size,1,D3D12_RESOURCE_DIMENSION_BUFFER);
 	cb.CreateBuffer(device, cbHeapProp);
 
 	// 定数バッファのマッピング
@@ -216,20 +216,20 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 #pragma endregion
 #pragma region 頂点バッファ
 	// 頂点データ
-	XMFLOAT3 vertices[] =
+	Vertex vertices[] =
 	{
-		{ -0.5f, -0.5f, 0.0f }, // 左下
-		{ -0.5f, +0.5f, 0.0f }, // 左上
-		{ +0.5f, -0.5f, 0.0f }, // 右下
-		{ +0.5f, +0.5f, 0.0f }, // 右上
+		{{ -0.4f, -0.7f, 0.0f },{0.0f,1.0f}}, // 左下
+		{{ -0.4f, +0.7f, 0.0f },{0.0f,0.0f}}, // 左上
+		{{ +0.4f, -0.7f, 0.0f },{1.0f,1.0f}}, // 右下
+		{{ +0.4f, +0.7f, 0.0f },{1.0f,0.0f}}, // 右上
 	};
 
 	// 頂点バッファの設定
 	D3D12_HEAP_PROPERTIES heapProp{}; // ヒープ設定
 	heapProp.Type = D3D12_HEAP_TYPE_UPLOAD; // GPUへの転送用
 
-	VertexBuf vertex(static_cast<UINT>(sizeof(XMFLOAT3) * _countof(vertices)));
-	vertex.SetResource(D3D12_RESOURCE_DIMENSION_BUFFER);
+	VertexBuf vertex(static_cast<UINT>(sizeof(vertices[0]) * _countof(vertices)));
+	vertex.SetResource(vertex.size,1,D3D12_RESOURCE_DIMENSION_BUFFER);
 	vertex.CreateBuffer(device, heapProp);
 	vertex.Mapping(vertices, _countof(vertices));
 	vertex.CreateView(); // 頂点バッファビューの作成
@@ -243,22 +243,63 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	};
 
 	IndexBuf index(static_cast<UINT>(sizeof(uint16_t) * _countof(indices)));
-	index.SetResource(D3D12_RESOURCE_DIMENSION_BUFFER);
+	index.SetResource(index.size,1,D3D12_RESOURCE_DIMENSION_BUFFER);
 	index.CreateBuffer(device, heapProp);
 	index.Mapping(indices, _countof(indices));
 	index.CreateView(); // インデックスビューの作成
-#pragma endregion	
+#pragma endregion
+#pragma region テクスチャバッファ
+	const size_t textureWidth = 256;
+	const size_t textureHeight = 256;
+	const size_t imageDataCount = textureWidth * textureHeight;
+	const size_t maxSRVCount = 2056;
+	XMFLOAT4* imageData = new XMFLOAT4[imageDataCount];
+
+	for (size_t i = 0; i < imageDataCount; i++)
+	{
+		imageData[i] = { 1.0f,0,0,1.0f };
+	}
+
+	D3D12_HEAP_PROPERTIES textureHeapProp{};
+	textureHeapProp.Type = D3D12_HEAP_TYPE_CUSTOM;
+	textureHeapProp.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_WRITE_BACK;
+	textureHeapProp.MemoryPoolPreference = D3D12_MEMORY_POOL_L0;
+
+	TextureBuf texture{};
+	texture.SetResource(textureWidth, textureHeight,D3D12_RESOURCE_DIMENSION_TEXTURE2D,true);
+	texture.CreateBuffer(device,textureHeapProp);
+	texture.Transfer(textureWidth, imageDataCount, imageData);
+	delete[] imageData;
+
+	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc{};
+	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	srvHeapDesc.NumDescriptors = maxSRVCount;
+
+	ID3D12DescriptorHeap* srvHeap = nullptr;
+	assert(SUCCEEDED(device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&srvHeap))));
+
+	D3D12_CPU_DESCRIPTOR_HANDLE srvHandle = srvHeap->GetCPUDescriptorHandleForHeapStart();
+
+	texture.CreateView();
+	device->CreateShaderResourceView(texture.buff, &texture.view, srvHandle);
+#pragma endregion
 	ID3DBlob* errorBlob = nullptr; // エラーオブジェクト
 	ShaderBlob vs = { L"BasicVS.hlsl", "vs_5_0", errorBlob }; // 頂点シェーダの読み込みとコンパイル
 	ShaderBlob ps = { L"BasicPS.hlsl", "ps_5_0", errorBlob }; // ピクセルシェーダの読み込みとコンパイル
 
 	// 頂点レイアウト
 	D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
-		{
+		{	// xyz座標
 			"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,
 			D3D12_APPEND_ALIGNED_ELEMENT,
 			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0
-		}, // (1行で書いたほうが見やすい)
+		},
+		{	// uv座標
+			"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0,
+			D3D12_APPEND_ALIGNED_ELEMENT,
+			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0
+		}
 	};
 
 	// グラフィックスパイプライン設定
@@ -277,11 +318,28 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	UseBlendMode(blenddesc); // ブレンドを有効にする
 	SetBlend(blenddesc, BLENDMODE_ALPHA); // 半透明合成
+	
+	D3D12_DESCRIPTOR_RANGE descriptorRange{};
+	descriptorRange.NumDescriptors = 1;
+	descriptorRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	descriptorRange.BaseShaderRegister = 0;
+	descriptorRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	RootSignature rootSignature{};		// ルートシグネチャ
-	rootSignature.SetParam();			// ルートパラメータの設定
-	rootSignature.SetRootSignature();	// ルートシグネチャの設定
-	rootSignature.SerializeRootSignature(device, errorBlob);// ルートシグネチャのシリアライズ
+	D3D12_STATIC_SAMPLER_DESC samplerDesc{};
+	samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	samplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
+	samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+	samplerDesc.MinLOD = 0.0f;
+	samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+	samplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	RootSignature rootSignature{};								// ルートシグネチャ
+	rootSignature.SetParam(descriptorRange);					// ルートパラメータの設定
+	rootSignature.SetRootSignature(samplerDesc);							// ルートシグネチャの設定
+	rootSignature.SerializeRootSignature(device, errorBlob);	// ルートシグネチャのシリアライズ
 	// パイプラインにルートシグネチャをセット
 	pipeline.desc.pRootSignature = rootSignature.rs;
 
@@ -364,6 +422,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		// 定数バッファビューの設定コマンド
 		commandList->SetGraphicsRootConstantBufferView(0, cb.buff->GetGPUVirtualAddress());
 
+		commandList->SetDescriptorHeaps(1, &srvHeap);
+		D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle = srvHeap->GetGPUDescriptorHandleForHeapStart();
+		commandList->SetGraphicsRootDescriptorTable(1, srvGpuHandle);
+
 		// 描画コマンド
 		commandList->DrawIndexedInstanced(_countof(indices), 1, 0, 0, 0); // 全ての頂点を使って描画
 #pragma endregion
@@ -373,7 +435,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		barrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET; // 描画状態から
 		barrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT; // 表示状態へ
 		commandList->ResourceBarrier(1, &barrierDesc);
-
 		// 命令のクローズ
 		result = commandList->Close();
 		assert(SUCCEEDED(result));
