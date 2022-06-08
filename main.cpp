@@ -174,16 +174,22 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	index.CreateView(); // インデックスビューの作成
 #pragma endregion
 #pragma region テクスチャバッファ
-	const size_t textureWidth = 256;
-	const size_t textureHeight = 256;
-	const size_t imageDataCount = textureWidth * textureHeight;
-	const size_t maxSRVCount = 2056;
-	XMFLOAT4* imageData = new XMFLOAT4[imageDataCount];
+	TexMetadata metadata{};
+	ScratchImage scratchImg{};
 
-	for (size_t i = 0; i < imageDataCount; i++)
+	LoadFromWICFile(L"Resources/Map.png", WIC_FLAGS_NONE, &metadata, scratchImg);
+
+	ScratchImage mipChain{};
+
+	result = GenerateMipMaps(scratchImg.GetImages(), scratchImg.GetImageCount(),
+		scratchImg.GetMetadata(), TEX_FILTER_DEFAULT, 0, mipChain);
+	if (SUCCEEDED(result))
 	{
-		imageData[i] = { 1.0f,0,0,1.0f };
+		scratchImg = std::move(mipChain);
+		metadata = scratchImg.GetMetadata();
 	}
+
+	metadata.format = MakeSRGB(metadata.format);
 
 	D3D12_HEAP_PROPERTIES textureHeapProp{};
 	textureHeapProp.Type = D3D12_HEAP_TYPE_CUSTOM;
@@ -191,11 +197,18 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	textureHeapProp.MemoryPoolPreference = D3D12_MEMORY_POOL_L0;
 
 	TextureBuf texture{};
-	texture.SetResource(textureWidth, textureHeight,D3D12_RESOURCE_DIMENSION_TEXTURE2D,true);
-	texture.CreateBuffer(device,textureHeapProp);
-	texture.Transfer(textureWidth, imageDataCount, imageData);
-	delete[] imageData;
+	texture.SetResource();
+	//texture.CreateBuffer(device,textureHeapProp);
+	assert(SUCCEEDED(
+		device->CreateCommittedResource(
+			&textureHeapProp, D3D12_HEAP_FLAG_NONE,
+			&texture.resDesc,
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr, IID_PPV_ARGS(&texture.buff))));
 
+	texture.Transfer();
+
+	const int maxSRVCount = 2056;
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc{};
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;

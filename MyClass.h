@@ -8,6 +8,7 @@
 #include <DirectXMath.h>
 #include <d3dcompiler.h>
 #include <dinput.h>
+#include <DirectXTex.h>
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -75,14 +76,13 @@ public:
 
 class Buffer
 {
-private:
-	D3D12_RESOURCE_DESC resDesc;
 protected:
 	void Init();
 public:
+	D3D12_RESOURCE_DESC resDesc;
 	ID3D12Resource* buff;
 
-	void SetResource(size_t width, size_t height, D3D12_RESOURCE_DIMENSION Dimension, bool isTexRes = 0);
+	void SetResource(size_t width, size_t height, D3D12_RESOURCE_DIMENSION Dimension);
 	void CreateBuffer(ID3D12Device* device, D3D12_HEAP_PROPERTIES heapProp);
 };
 
@@ -130,11 +130,39 @@ public:
 
 class TextureBuf :public Buffer
 {
+	TexMetadata metadata;
+	ScratchImage scratchImg;
+	ScratchImage mipChain;
 public:
 	D3D12_SHADER_RESOURCE_VIEW_DESC view;
 
 	TextureBuf();
-	void Transfer(size_t textureWidth, size_t imageDataCount, XMFLOAT4* imageData);
+	void SetResource()
+	{
+		resDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+		resDesc.Format = metadata.format;
+		resDesc.Width = metadata.width;
+		resDesc.Height = (UINT)metadata.height;
+		resDesc.DepthOrArraySize = (UINT16)metadata.arraySize;
+		resDesc.MipLevels = (UINT16)metadata.mipLevels;
+		resDesc.SampleDesc.Count = 1;
+		resDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	}
+	void LoadTexture()
+	{
+		LoadFromWICFile(L"Resources/Map.png", WIC_FLAGS_NONE, &metadata, scratchImg);
+	}
+	void CreateMipMap()
+	{
+		HRESULT result = GenerateMipMaps(scratchImg.GetImages(), scratchImg.GetImageCount(),
+			scratchImg.GetMetadata(), TEX_FILTER_DEFAULT, 0, mipChain);
+		if (SUCCEEDED(result))
+		{
+			scratchImg = std::move(mipChain);
+			metadata = scratchImg.GetMetadata();
+		}
+	}
+	void Transfer();
 	void CreateView();
 };
 
@@ -260,4 +288,51 @@ public:
 		}
 	}
 
+};
+
+class SwapChain
+{
+	std::vector<ID3D12Resource*> backBuffers;
+	D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle;
+	D3D12_RENDER_TARGET_VIEW_DESC rtvDesc;
+public:
+	IDXGISwapChain4* swapChain;
+	DXGI_SWAP_CHAIN_DESC1 desc;
+	SwapChain()
+	{
+		desc.Width = 1280;
+		desc.Height = 720;
+		desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // 色情報の書式
+		desc.SampleDesc.Count = 1; // マルチサンプルしない
+		desc.BufferUsage = DXGI_USAGE_BACK_BUFFER; // バックバッファ用
+		desc.BufferCount = 2; // バッファ数を2つに設定
+		desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD; // フリップ後は破棄
+		desc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+		backBuffers.resize(desc.BufferCount);
+		rtvDesc = {};
+		swapChain = nullptr;
+	}
+	void Create(IDXGIFactory7* dxgiFactory, ID3D12CommandQueue* commandQueue, HWND hwnd)
+	{
+		assert(SUCCEEDED(
+			dxgiFactory->CreateSwapChainForHwnd(
+				commandQueue, hwnd, &desc, nullptr, nullptr,
+				(IDXGISwapChain1**)&swapChain))
+		);
+	}
+	void Set(ID3D12Device* device, ID3D12DescriptorHeap* rtvHeap, D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc)
+	{
+		for (size_t i = 0; i < backBuffers.size(); i++) {
+			swapChain->GetBuffer((UINT)i, IID_PPV_ARGS(&backBuffers[i]));
+			rtvHandle = rtvHeap->GetCPUDescriptorHandleForHeapStart();
+			rtvHandle.ptr += i * device->GetDescriptorHandleIncrementSize(rtvHeapDesc.Type);
+			rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+			rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+			device->CreateRenderTargetView(backBuffers[i], &rtvDesc, rtvHandle);
+		}
+	}
+	void Flip()
+	{
+		assert(SUCCEEDED(swapChain->Present(1, 0)));
+	}
 };

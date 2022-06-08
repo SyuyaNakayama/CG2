@@ -82,7 +82,6 @@ LRESULT WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	// 標準のメッセージ処理を行う
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
-
 WindowsAPI::WindowsAPI(WNDPROC lpfnWndProc, int window_width, int window_height)
 {
 	w.cbSize = sizeof(WNDCLASSEX);
@@ -111,7 +110,7 @@ WindowsAPI::WindowsAPI(WNDPROC lpfnWndProc, int window_width, int window_height)
 		nullptr); // オプション
 }
 
-void Buffer::SetResource(size_t width, size_t height, D3D12_RESOURCE_DIMENSION Dimension, bool isTexRes)
+void Buffer::SetResource(size_t width, size_t height, D3D12_RESOURCE_DIMENSION Dimension)
 {
 	resDesc.Dimension = Dimension;
 	resDesc.Width = width;
@@ -119,8 +118,6 @@ void Buffer::SetResource(size_t width, size_t height, D3D12_RESOURCE_DIMENSION D
 	resDesc.DepthOrArraySize = 1;
 	resDesc.MipLevels = 1;
 	resDesc.SampleDesc.Count = 1;
-	if (!isTexRes) { resDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR; }
-	else { resDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT; }
 }
 void Buffer::CreateBuffer(ID3D12Device* device, D3D12_HEAP_PROPERTIES heapProp)
 {
@@ -194,21 +191,29 @@ TextureBuf::TextureBuf()
 {
 	Init();
 	view = {};
+	metadata = {};
+	scratchImg = {};
+	mipChain = {};
 }
-void TextureBuf::Transfer(size_t textureWidth, size_t imageDataCount, XMFLOAT4* imageData)
+void TextureBuf::Transfer()
 {
-	HRESULT result = buff->WriteToSubresource(
-		0, nullptr, imageData,
-		sizeof(XMFLOAT4) * textureWidth,
-		sizeof(XMFLOAT4) * imageDataCount);
-	assert(SUCCEEDED(result));
+	HRESULT result;
+
+	for (size_t i = 0; i < metadata.mipLevels; i++)
+	{
+		const Image* IMG = scratchImg.GetImage(i, 0, 0);
+		result = buff->WriteToSubresource(
+			(UINT)i, nullptr, IMG->pixels,
+			(UINT)IMG->rowPitch, (UINT)IMG->slicePitch);
+		assert(SUCCEEDED(result));
+	}
 }
 void TextureBuf::CreateView()
 {
-	view.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	view.Format = resDesc.Format;
 	view.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	view.Texture2D.MipLevels = 1;
+	view.Texture2D.MipLevels = resDesc.MipLevels;
 }
 
 Pipeline::Pipeline()
