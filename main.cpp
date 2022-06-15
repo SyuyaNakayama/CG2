@@ -112,6 +112,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	ID3D12Fence* fence = nullptr;
 	UINT64 fenceVal = 0;
 	result = device->CreateFence(fenceVal, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
+	assert(SUCCEEDED(result));
 
 	// DirectInputの初期化&キーボードデバイスの生成
 	Keyboard keyboard;
@@ -129,24 +130,32 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	D3D12_HEAP_PROPERTIES cbHeapProp{};
 	cbHeapProp.Type = D3D12_HEAP_TYPE_UPLOAD;
 
-	ConstBuf cb((sizeof(ConstBufferDataMaterial) + 0xff) & ~0xff);
-	cb.SetResource(cb.size,1,D3D12_RESOURCE_DIMENSION_BUFFER);
-	cb.CreateBuffer(device, cbHeapProp);
+	ConstBuf cb[2] = { ConstBuf::Type::Material,ConstBuf::Type::Transform };
+	for (size_t i = 0; i < _countof(cb); i++)
+	{
+		cb[i].SetResource(cb[i].size, 1, D3D12_RESOURCE_DIMENSION_BUFFER);
+		cb[i].CreateBuffer(device, cbHeapProp);
 
-	// 定数バッファのマッピング
-	cb.Mapping();
+		// 定数バッファのマッピング
+		cb[i].Mapping();
+	}
 
+	cb[ConstBuf::Type::Transform].mapTransform->mat = XMMatrixIdentity();
+	cb[ConstBuf::Type::Transform].mapTransform->mat.r[0].m128_f32[0] = 2.0f / window_width;
+	cb[ConstBuf::Type::Transform].mapTransform->mat.r[1].m128_f32[1] = -2.0f / window_height;
+	cb[ConstBuf::Type::Transform].mapTransform->mat.r[3].m128_f32[0] = -1.0f;
+	cb[ConstBuf::Type::Transform].mapTransform->mat.r[3].m128_f32[1] = 1.0f;
 	// 値を書き込むと自動的に転送される
-	cb.mapMaterial->color = XMFLOAT4(1, 1, 1, 1);
+	cb[ConstBuf::Type::Material].mapMaterial->color = XMFLOAT4(1, 1, 1, 1);
 #pragma endregion
 #pragma region 頂点バッファ
 	// 頂点データ
 	Vertex vertices[] =
 	{
-		{{ -0.4f, -0.7f, 0.0f },{0.0f,1.0f}}, // 左下
-		{{ -0.4f, +0.7f, 0.0f },{0.0f,0.0f}}, // 左上
-		{{ +0.4f, -0.7f, 0.0f },{1.0f,1.0f}}, // 右下
-		{{ +0.4f, +0.7f, 0.0f },{1.0f,0.0f}}, // 右上
+		{{   0.0f,100.0f,0.0f },{0.0f,1.0f}}, // 左下
+		{{   0.0f,  0.0f,0.0f },{0.0f,0.0f}}, // 左上
+		{{ 100.0f,100.0f,0.0f },{1.0f,1.0f}}, // 右下
+		{{ 100.0f,  0.0f,0.0f },{1.0f,0.0f}}, // 右上
 	};
 
 	// 頂点バッファの設定
@@ -154,7 +163,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	heapProp.Type = D3D12_HEAP_TYPE_UPLOAD; // GPUへの転送用
 
 	VertexBuf vertex(static_cast<UINT>(sizeof(vertices[0]) * _countof(vertices)));
-	vertex.SetResource(vertex.size,1,D3D12_RESOURCE_DIMENSION_BUFFER);
+	vertex.SetResource(vertex.size, 1, D3D12_RESOURCE_DIMENSION_BUFFER);
 	vertex.CreateBuffer(device, heapProp);
 	vertex.Mapping(vertices, _countof(vertices));
 	vertex.CreateView(); // 頂点バッファビューの作成
@@ -168,29 +177,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	};
 
 	IndexBuf index(static_cast<UINT>(sizeof(uint16_t) * _countof(indices)));
-	index.SetResource(index.size,1,D3D12_RESOURCE_DIMENSION_BUFFER);
+	index.SetResource(index.size, 1, D3D12_RESOURCE_DIMENSION_BUFFER);
 	index.CreateBuffer(device, heapProp);
 	index.Mapping(indices, _countof(indices));
 	index.CreateView(); // インデックスビューの作成
 #pragma endregion
 #pragma region テクスチャバッファ
-	TexMetadata metadata{};
-	ScratchImage scratchImg{};
-
-	LoadFromWICFile(L"Resources/Map.png", WIC_FLAGS_NONE, &metadata, scratchImg);
-
-	ScratchImage mipChain{};
-
-	result = GenerateMipMaps(scratchImg.GetImages(), scratchImg.GetImageCount(),
-		scratchImg.GetMetadata(), TEX_FILTER_DEFAULT, 0, mipChain);
-	if (SUCCEEDED(result))
-	{
-		scratchImg = std::move(mipChain);
-		metadata = scratchImg.GetMetadata();
-	}
-
-	metadata.format = MakeSRGB(metadata.format);
-
 	D3D12_HEAP_PROPERTIES textureHeapProp{};
 	textureHeapProp.Type = D3D12_HEAP_TYPE_CUSTOM;
 	textureHeapProp.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_WRITE_BACK;
@@ -198,14 +190,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	TextureBuf texture{};
 	texture.SetResource();
-	//texture.CreateBuffer(device,textureHeapProp);
-	assert(SUCCEEDED(
-		device->CreateCommittedResource(
-			&textureHeapProp, D3D12_HEAP_FLAG_NONE,
-			&texture.resDesc,
-			D3D12_RESOURCE_STATE_GENERIC_READ,
-			nullptr, IID_PPV_ARGS(&texture.buff))));
-
+	texture.CreateBuffer(device, textureHeapProp);
 	texture.Transfer();
 
 	const int maxSRVCount = 2056;
@@ -222,6 +207,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	texture.CreateView();
 	device->CreateShaderResourceView(texture.buff, &texture.view, srvHandle);
 #pragma endregion
+#pragma region シェーダ
 	ID3DBlob* errorBlob = nullptr; // エラーオブジェクト
 	ShaderBlob vs = { L"BasicVS.hlsl", "vs_5_0", errorBlob }; // 頂点シェーダの読み込みとコンパイル
 	ShaderBlob ps = { L"BasicPS.hlsl", "ps_5_0", errorBlob }; // ピクセルシェーダの読み込みとコンパイル
@@ -239,7 +225,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0
 		}
 	};
-
+#pragma endregion
+#pragma region パイプライン
 	// グラフィックスパイプライン設定
 	Pipeline pipeline{};
 
@@ -256,7 +243,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	UseBlendMode(blenddesc); // ブレンドを有効にする
 	SetBlend(blenddesc, BLENDMODE_ALPHA); // 半透明合成
-	
+
 	D3D12_DESCRIPTOR_RANGE descriptorRange{};
 	descriptorRange.NumDescriptors = 1;
 	descriptorRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
@@ -283,6 +270,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	// パイプランステートの生成
 	pipeline.CreatePipelineState(device);
+#pragma endregion
 #pragma endregion
 	// ゲームループ
 	while (1)
@@ -349,10 +337,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		commandList->IASetIndexBuffer(&index.view); // 頂点バッファビューの設定コマンド
 		commandList->RSSetViewports(1, &viewport); // ビューポート設定コマンドを、コマンドリストに積む
 		// 定数バッファビューの設定コマンド
-		commandList->SetGraphicsRootConstantBufferView(0, cb.buff->GetGPUVirtualAddress());
+		commandList->SetGraphicsRootConstantBufferView(0, cb[ConstBuf::Type::Material].buff->GetGPUVirtualAddress());
 		commandList->SetDescriptorHeaps(1, &srvHeap);
 		D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle = srvHeap->GetGPUDescriptorHandleForHeapStart();
 		commandList->SetGraphicsRootDescriptorTable(1, srvGpuHandle);
+		commandList->SetGraphicsRootConstantBufferView(2, cb[ConstBuf::Type::Transform].buff->GetGPUVirtualAddress());
 
 		// 描画コマンド
 		commandList->DrawIndexedInstanced(_countof(indices), 1, 0, 0, 0); // 全ての頂点を使って描画

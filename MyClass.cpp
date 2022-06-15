@@ -118,6 +118,7 @@ void Buffer::SetResource(size_t width, size_t height, D3D12_RESOURCE_DIMENSION D
 	resDesc.DepthOrArraySize = 1;
 	resDesc.MipLevels = 1;
 	resDesc.SampleDesc.Count = 1;
+	resDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 }
 void Buffer::CreateBuffer(ID3D12Device* device, D3D12_HEAP_PROPERTIES heapProp)
 {
@@ -134,15 +135,36 @@ void Buffer::Init()
 	buff = nullptr;
 }
 
-ConstBuf::ConstBuf(UINT size)
+ConstBuf::ConstBuf(int type)
 {
 	Init();
-	this->size = size;
+	this->type = type;
+	switch (this->type)
+	{
+	case ConstBuf::Material:
+		this->size = ((sizeof(ConstBufferDataMaterial) + 0xff) & ~0xff);
+		break;
+	case ConstBuf::Transform:
+		this->size = ((sizeof(ConstBufferDataTransform) + 0xff) & ~0xff);
+		break;
+	default:
+		this->size = 1;
+		break;
+	}
 	mapMaterial = nullptr;
+	mapTransform = nullptr;
 }
 void ConstBuf::Mapping()
 {
-	assert(SUCCEEDED(buff->Map(0, nullptr, (void**)&mapMaterial)));
+	switch (this->type)
+	{
+	case ConstBuf::Material:
+		assert(SUCCEEDED(buff->Map(0, nullptr, (void**)&mapMaterial)));
+		break;
+	case ConstBuf::Transform:
+		assert(SUCCEEDED(buff->Map(0, nullptr, (void**)&mapTransform)));
+		break;
+	}
 }
 
 VertexBuf::VertexBuf(UINT size)
@@ -194,6 +216,18 @@ TextureBuf::TextureBuf()
 	metadata = {};
 	scratchImg = {};
 	mipChain = {};
+
+	LoadFromWICFile(L"Resources/Map.png", WIC_FLAGS_NONE, &metadata, scratchImg);
+
+	HRESULT result = GenerateMipMaps(scratchImg.GetImages(), scratchImg.GetImageCount(),
+		scratchImg.GetMetadata(), TEX_FILTER_DEFAULT, 0, mipChain);
+	if (SUCCEEDED(result))
+	{
+		scratchImg = std::move(mipChain);
+		metadata = scratchImg.GetMetadata();
+	}
+
+	metadata.format = MakeSRGB(metadata.format);
 }
 void TextureBuf::Transfer()
 {
@@ -258,6 +292,54 @@ void Pipeline::CreatePipelineState(ID3D12Device* device)
 	assert(SUCCEEDED(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&state))));
 }
 
+DirectXInit::DirectXInit()
+{
+	assert(SUCCEEDED(CreateDXGIFactory(IID_PPV_ARGS(&dxgiFactory))));
+}
+void DirectXInit::AdapterChoice()
+{
+	// パフォーマンスが高いものから順に、全てのアダプターを列挙する
+	for (UINT i = 0;
+		dxgiFactory->EnumAdapterByGpuPreference(i,
+			DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+			IID_PPV_ARGS(&tmpAdapter)) != DXGI_ERROR_NOT_FOUND;
+		i++)
+	{
+		// 動的配列に追加する
+		adapters.push_back(tmpAdapter);
+	}
+	// 妥当なアダプタを選別する
+	for (size_t i = 0; i < adapters.size(); i++)
+	{
+		DXGI_ADAPTER_DESC3 adapterDesc;
+		// アダプターの情報を取得する
+		adapters[i]->GetDesc3(&adapterDesc);
+		// ソフトウェアデバイスを回避
+		if (!(adapterDesc.Flags & DXGI_ADAPTER_FLAG3_SOFTWARE))
+		{
+			// デバイスを採用してループを抜ける
+			tmpAdapter = adapters[i];
+			break;
+		}
+	}
+}
+ID3D12Device* DirectXInit::CreateDevice(D3D_FEATURE_LEVEL* levels, size_t levelsNum, ID3D12Device* device)
+{
+	HRESULT result;
+
+	for (size_t i = 0; i < levelsNum; i++)
+	{
+		// 採用したアダプターでデバイスを生成
+		result = D3D12CreateDevice(tmpAdapter, levels[i], IID_PPV_ARGS(&device));
+		if (result == S_OK)
+		{
+			// デバイスを生成できた時点でループを抜ける
+			featureLevel = levels[i];
+			return device;
+		}
+	}
+}
+
 void UseBlendMode(D3D12_RENDER_TARGET_BLEND_DESC& blenddesc)
 {
 	blenddesc.BlendEnable = true;
@@ -265,7 +347,6 @@ void UseBlendMode(D3D12_RENDER_TARGET_BLEND_DESC& blenddesc)
 	blenddesc.SrcBlendAlpha = D3D12_BLEND_ONE;		// ソースの値を100%使う
 	blenddesc.DestBlendAlpha = D3D12_BLEND_ZERO;	// 使わない
 }
-
 void SetBlend(D3D12_RENDER_TARGET_BLEND_DESC& blenddesc, int blendMode)
 {
 	switch (blendMode)
